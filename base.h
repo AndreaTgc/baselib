@@ -13,6 +13,7 @@
  * missing symbols.
  *
  * The implemented features are the following:
+ * - General purpose macros
  * - Arena allocator
  * - Length based strings (instead of null terminated)
  * - Macro based generic vector (stb_da style)
@@ -34,13 +35,28 @@ extern "C" {
 #ifndef BASE_ASSERT
 #include <assert.h>
 #define BASE_ASSERT(cond) assert(cond)
-#endif // BASE_ASSERT
+#endif /* BASE_ASSERT */
 
 #ifdef BASE_STATIC
 #define BASE_API static
 #else
 #define BASE_API extern
 #endif /* BASE_STATIC */
+
+/**
+ * The following macros are the ones that i end up relying on the most when I
+ * work on my personal projects. They are nothing crazy but i just don't want to
+ * waste my time rewriting them for every single project.
+ */
+
+#define KILOBYTES(n)          ((n) * 1024)
+#define MEGABYTES(n)          (KILOBYTES(n) * 1024)
+#define GIGABYTES(n)          (MEGABYTES(n) * 1024)
+#define ARRLEN(arr)           (sizeof(arr) / sizeof((arr)[0]))
+#define MIN(x, y)             ((x) < (y) ? (x) : (y))
+#define MAX(x, y)             ((x) > (y) ? (x) : (y))
+#define CLAMP(x, lo, hi)      (MAX(lo, MIN(x, hi)))
+#define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 
 /**
  * This is a very basic implementation of a arena allocator (also called linear
@@ -75,11 +91,22 @@ BASE_API Str  strFromParts  (const char *startPtr, size_t len);
 BASE_API Str  strTrimLeft   (Str s);
 BASE_API Str  strTrimRight  (Str s);
 BASE_API Str  strTrim       (Str s);
-BASE_API Str  strGetSubstr  (Str s, size_t stardIndex, size_t len);
+BASE_API Str  strGetSubstr  (Str s, size_t startIndex, size_t len);
+BASE_API Str  strChopLeft   (Str *s, Str delim);
+BASE_API Str  strChopLeftC  (Str *s, char delim);
 BASE_API bool strEquals     (Str s1, Str s2);
 BASE_API bool strContains   (Str haystack, Str needle);
 BASE_API bool strStartsWith (Str haystack, Str needle);
 BASE_API bool strEndsWith   (Str haystack, Str needle);
+
+/**
+ * This dynamic array implementation is inspired by the stb_da library and the
+ * implementation used in Nob.h.
+ * The idea is to have a really lightweight struct that offers some of the basic
+ * features found in C++'s vector.
+ * Unfortunately the lack of generics/templates in C requires us to use a little
+ * bit of macro magic but overall it's still quite readable.
+ */
 
 #define DA(T) struct { T *data; size_t size, capacity; }
 
@@ -119,18 +146,31 @@ BASE_API void daGrow (void **data, size_t *capacity, size_t elementSize);
 #include <stdio.h>
 
 BASE_API void arenaInit(Arena *ar, size_t bytes) {
+  BASE_ASSERT(ar);
   memset(ar, 0, sizeof(*ar));
   ar->capacity = bytes;
   ar->data = (uint8_t*)calloc(sizeof(uint8_t), bytes);
 }
 
 BASE_API void arenaInitFromBuffer(Arena *ar, void *buf, size_t bytes) {
+  BASE_ASSERT(ar);
   ar->size = 0;
   ar->capacity = bytes;
   ar->data = buf;
 }
 
+BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
+  BASE_ASSERT(ar);
+  if (ar->size + bytes > ar->capacity) {
+    return NULL;
+  }
+  void *p = ar->data + ar->size;
+  ar->size += bytes;
+  return p;
+}
+
 BASE_API void arenaDeinit(Arena *ar) {
+  BASE_ASSERT(ar);
   if (ar->data) free(ar->data);
   memset(ar, 0, sizeof(*ar));
 }
@@ -142,6 +182,7 @@ BASE_API Str strFromCStr(const char *cstr) {
 }
 
 BASE_API Str strSlurpFile(const char *path) {
+  BASE_ASSERT(path);
   FILE *f = fopen(path, "rb");
   if (!f) {
     return (Str) { .data = NULL, .size = 0 };
@@ -199,6 +240,9 @@ BASE_API bool strEquals(Str s1, Str s2) {
 }
 
 BASE_API bool strContains(Str haystack, Str needle) {
+  if (needle.size == 0) {
+    return true;
+  }
   for (size_t i = 0; i < haystack.size; i++) {
     if (haystack.data[i] == needle.data[0] &&
         haystack.size - i > needle.size &&
@@ -220,6 +264,28 @@ BASE_API Str strGetSubstr(Str s, size_t startIndex, size_t len) {
     len = s.size - startIndex;
   }
   return (Str) { .data = &s.data[startIndex], .size = len };
+}
+
+BASE_API Str strChopLeft(Str *s, Str delim) {
+  if (delim.size != 0 && delim.size <= s->size) {
+    for (size_t i = 0; i <= s->size - delim.size; i++) {
+      if (memcmp(&s->data[i], delim.data, delim.size) == 0) {
+        Str res = strFromParts(s->data, i);
+        s->data += i + delim.size;
+        s->size -= i + delim.size;
+        return res;
+      }
+    } 
+  }
+  Str ret = *s;
+  s->data += s->size;
+  s->size = 0;
+  return ret;
+}
+
+BASE_API Str strChopLeftC(Str *s, char delim) {
+  Str c = strFromParts(&delim, 1);
+  return strChopLeft(s, c);
 }
 
 BASE_API bool strStartsWith(Str haystack, Str needle) {
