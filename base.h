@@ -17,6 +17,7 @@
  * - Arena allocator
  * - Length based strings (instead of null terminated)
  * - Macro based generic vector (stb_da style)
+ * - String builder, wrapper around DA(char)
  */
 #ifndef BASE_H__
 #define BASE_H__
@@ -134,6 +135,12 @@ BASE_API void daGrow (void **data, size_t *capacity, size_t elementSize);
     (da)->size = 0;                                                            \
     (da)->capacity = 0;                                                        \
   } while (0)
+
+typedef DA(char) StrBuilder;
+
+BASE_API void strBuilderAppendCStr  (StrBuilder *sb, const char *cstr);
+BASE_API void strBuilderAppendSlice (StrBuilder *sb, const char *ptr, size_t len);
+BASE_API void strBuilderToCStr      (StrBuilder *sb);
 
 #ifdef __cplusplus
 }
@@ -302,9 +309,30 @@ BASE_API bool strEndsWith(Str haystack, Str needle) {
 BASE_API void daGrow(void **data, size_t *capacity, size_t elementSize) {
   size_t newCapacity = *capacity == 0 ? 8 : *capacity * 2;
   void *newData = realloc(*data, newCapacity * elementSize);
-  BASE_ASSERT(newData && "daGrow failed to realloc data");
+    BASE_ASSERT(newData && "daGrow failed to realloc data");
   *data = newData;
   *capacity = newCapacity;
+}
+
+BASE_API void strBuilderAppendCStr(StrBuilder *sb, const char *cstr) {
+  BASE_ASSERT(sb && cstr);
+  size_t slen = strlen(cstr);
+  for (size_t i = 0; i < slen; i++) {
+    daAppend(sb, cstr[i]);
+  }
+}
+
+BASE_API void strBuilderAppendSlice(StrBuilder *sb, const char *ptr, size_t len) {
+  BASE_ASSERT(sb && ptr);
+  for (size_t i = 0; i < len; i++) {
+    daAppend(sb, ptr[i]);
+  }
+}
+
+BASE_API void strBuilderToCStr(StrBuilder *sb) {
+  BASE_ASSERT(sb);
+  daAppend(sb, '\0');
+  sb->size--;
 }
 
 #endif /* BASE_IMPLEMENTATION */
