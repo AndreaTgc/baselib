@@ -56,7 +56,10 @@ extern "C" {
 #define ARRLEN(arr)           (sizeof(arr) / sizeof((arr)[0]))
 #define MIN(x, y)             ((x) < (y) ? (x) : (y))
 #define MAX(x, y)             ((x) > (y) ? (x) : (y))
+#define ABS(x)                ((x) >= 0 ? (x) : -(x))
+#define SIGN(x)               ((x) >= 0 ? 1 : -1)
 #define CLAMP(x, lo, hi)      (MAX(lo, MIN(x, hi)))
+#define MEMZERO(p, l)         memset(p, 0, l)
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 
 /**
@@ -136,11 +139,25 @@ BASE_API void daGrow (void **data, size_t *capacity, size_t elementSize);
     (da)->capacity = 0;                                                        \
   } while (0)
 
+/**
+ * This is a very basic implementation of a string builder. it's a wrapper over
+ * the DA implementation (see above). The string builder by itself is not null
+ * terminated but it can be converted to a cstr string using strBuilderToCStr
+ * and you're going to be able to pass the "data" field to C functions that
+ * expect a null terminated buffer.
+ * If you push some content onto the string builder after converting it to a
+ * cstr, the content is not going to be null terminated anymore, you should
+ * treat strBuilderToCStr as a utility that you call only when you need to
+ * interact with functions that require null terminators.
+ */
+
 typedef DA(char) StrBuilder;
 
 BASE_API void strBuilderAppendCStr  (StrBuilder *sb, const char *cstr);
 BASE_API void strBuilderAppendSlice (StrBuilder *sb, const char *ptr, size_t len);
 BASE_API void strBuilderToCStr      (StrBuilder *sb);
+
+#define strBuilderFree(sb) daFree(sb)
 
 #ifdef __cplusplus
 }
