@@ -159,6 +159,24 @@ BASE_API void strBuilderToCStr      (StrBuilder *sb);
 
 #define strBuilderFree(sb) daFree(sb)
 
+/**
+ * Minimal intrusive doubly linked list implementation. the type is meant to be
+ * embedded into other structs in order to access the implementation features
+ */
+
+typedef struct LLNode { struct LLNode *prev, *next; } LLNode; 
+
+BASE_API void llInsertBetween (LLNode *prev, LLNode *next, LLNode *node);
+BASE_API void llRemoveNode    (LLNode *node);
+
+#define llIsEmpty(h)         ((h)->next == (h))
+#define llPushBack(h, n)     llInsertBetween((h)->prev, (h), (n))
+#define llPushFront(h, n)    llInsertBetween((h), (h)->next, (n))
+#define llInsertAfter(a, n)  llInsertBetween((a), (a)->next, (n))
+#define llInsertBefore(b, n) llInsertBetween((b)->prev, (b), (n))
+#define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
+#define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -350,6 +368,22 @@ BASE_API void strBuilderToCStr(StrBuilder *sb) {
   BASE_ASSERT(sb);
   daAppend(sb, '\0');
   sb->size--;
+}
+
+BASE_API void llInsertBetween(LLNode *prev, LLNode *next, LLNode *node) {
+  BASE_ASSERT(prev && next && node);
+  node->prev = prev;
+  node->next = next;
+  prev->next = node;
+  next->prev = node;
+}
+
+BASE_API void llRemoveNode(LLNode *node) {
+  BASE_ASSERT(node && node->next && node->prev);
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
+  node->next = NULL;
+  node->prev = NULL;
 }
 
 #endif /* BASE_IMPLEMENTATION */
