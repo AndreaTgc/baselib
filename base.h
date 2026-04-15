@@ -12,12 +12,18 @@
  * one (and only one) C file, otherwise you're going to get a linker error for
  * missing symbols.
  *
+ * The code style you're going to see below can be summed up as follows:
+ * - General purpose macros are going to be in ALL_CAPS
+ * - Types are going to be in PascalCase
+ * - functions (or function like macros) are going to be in camelCase
+ *
  * The implemented features are the following:
  * - General purpose macros
  * - Arena allocator
  * - Length based strings (instead of null terminated)
  * - Macro based generic vector (stb_da style)
  * - String builder, wrapper around DA(char)
+ * - Intrusive linked list
  */
 #ifndef BASE_H__
 #define BASE_H__
@@ -60,6 +66,10 @@ extern "C" {
 #define SIGN(x)               ((x) >= 0 ? 1 : -1)
 #define CLAMP(x, lo, hi)      (MAX(lo, MIN(x, hi)))
 #define MEMZERO(p, l)         memset(p, 0, l)
+#define ALIGN_UP(x, a)        (((x) + ((a) - 1)) & ~((a) - 1))
+#define UNUSED(x)             ((void)(x))
+#define DEFER(s, e)           for (int _i = ((s), 0); !_i; ((e), ++_i))
+#define CONTAINER_OF(p, T, m) ((T *)((char *)(p) - offsetof(T, m)))
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 
 /**
