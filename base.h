@@ -71,7 +71,7 @@ extern "C" {
 #define CLAMP(x, lo, hi)      (MAX(lo, MIN(x, hi)))
 #define MEMZERO(p, l)         memset(p, 0, l)
 #define ALIGN_UP(x, a)        (((x) + ((a) - 1)) & ~((a) - 1))
-#define IS_POW2(x)            ((x) & ((x) - 1)) == 0)
+#define IS_POW2(x)            (((x) & ((x) - 1)) == 0)
 #define UNUSED(x)             ((void)(x))
 #define DEFER(s, e)           for (int _i = ((s), 0); !_i; ((e), ++_i))
 #define CONTAINER_OF(p, T, m) ((T *)((char *)(p) - offsetof(T, m)))
