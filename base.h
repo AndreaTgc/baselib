@@ -24,6 +24,10 @@
  * - Macro based generic vector (stb_da style)
  * - String builder, wrapper around DA(char)
  * - Intrusive linked list
+ *
+ * LICENSING:
+ * This library is distributed with the MIT license. See the bottom of this
+ * file for the license.
  */
 #ifndef BASE_H__
 #define BASE_H__
@@ -67,6 +71,7 @@ extern "C" {
 #define CLAMP(x, lo, hi)      (MAX(lo, MIN(x, hi)))
 #define MEMZERO(p, l)         memset(p, 0, l)
 #define ALIGN_UP(x, a)        (((x) + ((a) - 1)) & ~((a) - 1))
+#define IS_POW2(x)            ((x) & ((x) - 1)) == 0)
 #define UNUSED(x)             ((void)(x))
 #define DEFER(s, e)           for (int _i = ((s), 0); !_i; ((e), ++_i))
 #define CONTAINER_OF(p, T, m) ((T *)((char *)(p) - offsetof(T, m)))
@@ -209,6 +214,16 @@ BASE_API void arenaInitFromBuffer(Arena *ar, void *buf, size_t bytes) {
   ar->size = 0;
   ar->capacity = bytes;
   ar->data = buf;
+}
+
+BASE_API void *arenaAllocAligned(Arena *ar, size_t bytes, size_t align) {
+  BASE_ASSERT(ar);
+  BASE_ASSERT(align > 0 && IS_POW2(align));
+  size_t offset = ALIGN_UP(ar->size, align);
+  if (offset + bytes > ar->capacity) return NULL;
+  void *p  = ar->data + offset;
+  ar->size = offset + bytes;
+  return p;
 }
 
 BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
@@ -397,3 +412,27 @@ BASE_API void llRemoveNode(LLNode *node) {
 }
 
 #endif /* BASE_IMPLEMENTATION */
+
+/**
+ * MIT License
+ * 
+ * Copyright (c) 2026 AndreaTgc
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+*/
