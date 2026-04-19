@@ -37,6 +37,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
+#include <math.h>
 #include <ctype.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -204,6 +205,14 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
 
+/**
+ * The following are some very simple utilities for vector calculations.
+ * I decided to have them return the result by value instead of modifying the
+ * structs simply because they are so small there is no real benefit to it.
+ * The vectors are supported up to 4D which should cover 99% of all the use
+ * cases i actually care about
+ */
+
 typedef struct { float x, y; } Vec2;
 
 BASE_API Vec2  vec2Add       (Vec2 a, Vec2 b);
@@ -216,6 +225,20 @@ BASE_API float vec2Dot       (Vec2 a, Vec2 b);
 BASE_API float vec2Len       (Vec2 a);
 BASE_API float vec2LenSq     (Vec2 a);
 BASE_API float vec2Distance  (Vec2 a, Vec2 b);
+
+typedef struct { float x, y, z; } Vec3;
+
+BASE_API Vec3  vec3Add       (Vec3 a, Vec3 b);
+BASE_API Vec3  vec3Sub       (Vec3 a, Vec3 b);
+BASE_API Vec3  vec3Mul       (Vec3 a, Vec3 b);
+BASE_API Vec3  vec3Cross     (Vec3 a, Vec3 b);
+BASE_API Vec3  vec3Scale     (Vec3 a, float s);
+BASE_API Vec3  vec3Rotate    (Vec3 a, Vec3 axis, float rads);
+BASE_API Vec3  vec3Normalize (Vec3 a);
+BASE_API float vec3Dot       (Vec3 a, Vec3 b);
+BASE_API float vec3Len       (Vec3 a);
+BASE_API float vec3LenSq     (Vec3 a);
+BASE_API float vec3Distance  (Vec3 a, Vec3 b);
 
 #ifdef __cplusplus
 }
@@ -286,6 +309,7 @@ BASE_API Str strSlurpFile(const char *path) {
 
   char *data = (char *)malloc(bytes);
   if (!data) {
+    fclose(f);
     return (Str) { .data = NULL, .size = 0 };
   }
 
@@ -478,6 +502,64 @@ BASE_API float vec2LenSq(Vec2 a) {
 
 BASE_API float vec2Distance(Vec2 a, Vec2 b) {
   return vec2Len(vec2Sub(a, b));
+}
+
+BASE_API Vec3 vec3Add(Vec3 a, Vec3 b) {
+  return (Vec3) { a.x + b.x, a.y + b.y, a.z + b.z };
+}
+
+BASE_API Vec3 vec3Sub(Vec3 a, Vec3 b) {
+  return (Vec3) { a.x - b.x, a.y - b.y, a.z - b.z };
+}
+
+BASE_API Vec3 vec3Mul(Vec3 a, Vec3 b) {
+  return (Vec3) { a.x * b.x, a.y * b.y, a.z * b.z };
+}
+
+BASE_API Vec3 vec3Cross(Vec3 a, Vec3 b) {
+  return (Vec3) {
+    a.y * b.z - a.z * b.y,
+    a.z * b.x - a.x * b.z,
+    a.x * b.y - a.y * b.x,
+  };
+}
+
+BASE_API Vec3 vec3Scale(Vec3 a, float s) {
+  return (Vec3) { a.x * s, a.y * s, a.z * s };
+}
+
+BASE_API Vec3 vec3Rotate(Vec3 a, Vec3 axis, float rads) {
+  axis = vec3Normalize(axis);
+  Vec3 aPar = vec3Scale(axis, vec3Dot(a, axis));
+  Vec3 aPerp = vec3Sub(a, aPar);
+  Vec3 w = vec3Cross(axis, aPerp);
+  return (Vec3) {
+    aPar.x + cosf(rads) * aPerp.x + sinf(rads) * w.x,
+    aPar.y + cosf(rads) * aPerp.y + sinf(rads) * w.y,
+    aPar.z + cosf(rads) * aPerp.z + sinf(rads) * w.z,
+  };
+}
+
+BASE_API Vec3 vec3Normalize(Vec3 a) {
+  float lsq = vec3LenSq(a);
+  if (lsq == 0.f) return (Vec3) { 0 };
+  return vec3Scale(a, 1.f / sqrtf(lsq));
+}
+
+BASE_API float vec3Dot(Vec3 a, Vec3 b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+BASE_API float vec3Len(Vec3 a) {
+  return sqrtf(vec3LenSq(a));
+}
+
+BASE_API float vec3LenSq(Vec3 a) {
+  return a.x * a.x + a.y * a.y + a.z * a.z;
+}
+
+BASE_API float vec3Distance(Vec3 a, Vec3 b) {
+  return vec3Len(vec3Sub(a, b));
 }
 
 #endif /* BASE_IMPLEMENTATION */
