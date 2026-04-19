@@ -24,6 +24,7 @@
  * - Macro based generic vector (stb_da style)
  * - String builder, wrapper around DA(char)
  * - Intrusive linked list
+ * - Helpers for vector math (up to 4D)
  *
  * LICENSING:
  * This library is distributed with the MIT license. See the bottom of this
@@ -73,8 +74,10 @@ extern "C" {
 #define ALIGN_UP(x, a)        (((x) + ((a) - 1)) & ~((a) - 1))
 #define IS_POW2(x)            (((x) & ((x) - 1)) == 0)
 #define UNUSED(x)             ((void)(x))
+#define CAST(T, x)            ((T)(x))
 #define DEFER(s, e)           for (int _i = ((s), 0); !_i; ((e), ++_i))
 #define CONTAINER_OF(p, T, m) ((T *)((char *)(p) - offsetof(T, m)))
+#define PANIC()               do { fprintf(stderr, "PANIC: %s:%d\n", __FILE__, __LINE__); abort(); } while (0)
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 
 /**
@@ -136,7 +139,16 @@ BASE_API void daGrow (void **data, size_t *capacity, size_t elementSize);
 #define daFirst(da)          ((da)->data[0])
 #define daLast(da)           ((da)->data[(da)->size - 1])
 #define daAt(da, index)      ((da)->data[(index)])
+#define daSwapRemove(da, i)  ((da)->data[i] = (da)->data[--(da)->size])
 #define daForEach(da, T, it) for (T *(it) = (da)->data; (it) != ((da)->data) + ((da)->size); (it)++)
+
+#define daRemove(da, i)                                                        \
+  do {                                                                         \
+    BASE_ASSERT((i) >= 0 && (i) < (da)->size);                                 \
+    memmove(&daAt(da, i), &daAt(da, i + 1),                                    \
+            sizeof(daAt(da, 0)) * ((da)->size - i - 1));                       \
+    (da)->size--;                                                              \
+  } while (0)                                                                  \
 
 #define daAppend(da, i)                                                        \
   do {                                                                         \
@@ -191,6 +203,19 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llInsertBefore(b, n) llInsertBetween((b)->prev, (b), (n))
 #define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
+
+typedef struct { float x, y; } Vec2;
+
+BASE_API Vec2  vec2Add       (Vec2 a, Vec2 b);
+BASE_API Vec2  vec2Sub       (Vec2 a, Vec2 b);
+BASE_API Vec2  vec2Mul       (Vec2 a, Vec2 b);
+BASE_API Vec2  vec2Scale     (Vec2 a, float s);
+BASE_API Vec2  vec2Rotate    (Vec2 a, float rads);
+BASE_API Vec2  vec2Normalize (Vec2 a);
+BASE_API float vec2Dot       (Vec2 a, Vec2 b);
+BASE_API float vec2Len       (Vec2 a);
+BASE_API float vec2LenSq     (Vec2 a);
+BASE_API float vec2Distance  (Vec2 a, Vec2 b);
 
 #ifdef __cplusplus
 }
@@ -411,6 +436,50 @@ BASE_API void llRemoveNode(LLNode *node) {
   node->prev = NULL;
 }
 
+BASE_API Vec2 vec2Add(Vec2 a, Vec2 b) {
+  return (Vec2) { a.x + b.x, a.y + b.y };
+}
+
+BASE_API Vec2 vec2Sub(Vec2 a, Vec2 b) {
+  return (Vec2) { a.x - b.x, a.y - b.y };
+}
+
+BASE_API Vec2 vec2Mul(Vec2 a, Vec2 b) {
+  return (Vec2) { a.x * b.x, a.y * b.y };
+}
+
+BASE_API Vec2  vec2Scale(Vec2 a, float s) {
+  return (Vec2) { a.x * s, a.y * s };  
+}
+  
+BASE_API Vec2 vec2Rotate(Vec2 a, float rads) {
+  float c = cosf(rads);
+  float s = sinf(rads);
+  return (Vec2) { a.x * c - a.y * s, a.x * s + a.y * c };
+}
+
+BASE_API Vec2 vec2Normalize (Vec2 a) {
+  float lsq = vec2LenSq(a);
+  if (lsq == 0.f) return (Vec2) { 0 };
+  return vec2Scale(a, 1.f / sqrtf(lsq));
+}
+
+BASE_API float vec2Dot(Vec2 a, Vec2 b) {
+  return a.x * b.x + a.y * b.y;
+}
+
+BASE_API float vec2Len(Vec2 a) {
+  return sqrtf(vec2LenSq(a));
+}
+
+BASE_API float vec2LenSq(Vec2 a) {
+  return a.x * a.x + a.y * a.y;
+}
+
+BASE_API float vec2Distance(Vec2 a, Vec2 b) {
+  return vec2Len(vec2Sub(a, b));
+}
+
 #endif /* BASE_IMPLEMENTATION */
 
 /**
@@ -435,4 +504,4 @@ BASE_API void llRemoveNode(LLNode *node) {
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
-*/
+ */
