@@ -39,6 +39,7 @@ extern "C" {
 
 #include <math.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -79,6 +80,7 @@ extern "C" {
 #define DEFER(s, e)           for (int _i = ((s), 0); !_i; ((e), ++_i))
 #define CONTAINER_OF(p, T, m) ((T *)((char *)(p) - offsetof(T, m)))
 #define PANIC()               do { fprintf(stderr, "PANIC: %s:%d\n", __FILE__, __LINE__); abort(); } while (0)
+#define TODO(msg)             do { fprintf(stderr, "TODO: %s:%d - "msg"\n", __FILE__, __LINE__); abort(); } while (0)
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 
 /**
@@ -195,6 +197,7 @@ BASE_API void strBuilderToCStr      (StrBuilder *sb);
 typedef struct LLNode { struct LLNode *prev, *next; } LLNode; 
 
 BASE_API void llInsertBetween (LLNode *prev, LLNode *next, LLNode *node);
+BASE_API void llSplice        (LLNode *pos, LLNode *other);
 BASE_API void llRemoveNode    (LLNode *node);
 
 #define llIsEmpty(h)         ((h)->next == (h))
@@ -204,6 +207,7 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llInsertBefore(b, n) llInsertBetween((b)->prev, (b), (n))
 #define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
+#define llForEachRev(h, it)  for (LLNode *(it) = (h)->prev; (it) != (h); (it) = (it)->prev)
 
 /**
  * The following are some very simple utilities for vector calculations.
@@ -240,6 +244,23 @@ BASE_API float vec3Len       (Vec3 a);
 BASE_API float vec3LenSq     (Vec3 a);
 BASE_API float vec3Distance  (Vec3 a, Vec3 b);
 
+typedef struct { float x, y, z, w; } Vec4;
+
+#define vec4ToVec3(v4)       ((Vec3) { (v4).x, (v4).y, (v4).z })
+#define vec4FromVec3(v3, _w) ((Vec4) { (v3).x, (v3).y, (v3).z, (_w) })
+
+BASE_API Vec4  vec4Add       (Vec4 a, Vec4 b);
+BASE_API Vec4  vec4Sub       (Vec4 a, Vec4 b);
+BASE_API Vec4  vec4Mul       (Vec4 a, Vec4 b);
+BASE_API Vec4  vec4Scale     (Vec4 a, float s);
+BASE_API Vec4  vec4Normalize (Vec4 a);
+BASE_API float vec4Dot       (Vec4 a, Vec4 b);
+BASE_API float vec4Len       (Vec4 a);
+BASE_API float vec4LenSq     (Vec4 a);
+BASE_API float vec4Distance  (Vec4 a, Vec4 b);
+
+typedef struct { float x, y, z, w; } Quaternion;
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -248,11 +269,9 @@ BASE_API float vec3Distance  (Vec3 a, Vec3 b);
 
 #ifdef BASE_IMPLEMENTATION
 
-#include <stdio.h>
-
 BASE_API void arenaInit(Arena *ar, size_t bytes) {
   BASE_ASSERT(ar);
-  memset(ar, 0, sizeof(*ar));
+  MEMZERO(ar, sizeof(*ar));
   ar->capacity = bytes;
   ar->data = (uint8_t*)calloc(sizeof(uint8_t), bytes);
 }
@@ -287,7 +306,7 @@ BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
 BASE_API void arenaDeinit(Arena *ar) {
   BASE_ASSERT(ar);
   if (ar->data) free(ar->data);
-  memset(ar, 0, sizeof(*ar));
+  MEMZERO(ar, sizeof(*ar));
 }
 
 BASE_API Str strFromCStr(const char *cstr) {
@@ -452,6 +471,20 @@ BASE_API void llInsertBetween(LLNode *prev, LLNode *next, LLNode *node) {
   next->prev = node;
 }
 
+BASE_API void llSplice(LLNode *pos, LLNode *other) {
+  BASE_ASSERT(pos && other);
+  if (llIsEmpty(other)) return;
+  LLNode *otherFirst = other->next;
+  LLNode *otherLast = other->prev;
+  LLNode *posPrev = pos->prev;
+
+  posPrev->next = otherFirst;
+  otherFirst->prev = posPrev;
+  otherLast->next = pos;
+  pos->prev = otherLast;
+  llInitSentinel(other);
+}
+
 BASE_API void llRemoveNode(LLNode *node) {
   BASE_ASSERT(node && node->next && node->prev);
   node->prev->next = node->next;
@@ -560,6 +593,41 @@ BASE_API float vec3LenSq(Vec3 a) {
 
 BASE_API float vec3Distance(Vec3 a, Vec3 b) {
   return vec3Len(vec3Sub(a, b));
+}
+
+BASE_API Vec4 vec4Add(Vec4 a, Vec4 b) {
+  return (Vec4) { a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w };
+}
+
+BASE_API Vec4 vec4Sub(Vec4 a, Vec4 b) {
+  return (Vec4) { a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w };
+}
+BASE_API Vec4 vec4Mul(Vec4 a, Vec4 b) {
+  return (Vec4) { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
+}
+BASE_API Vec4 vec4Scale(Vec4 a, float s) {
+  return (Vec4) { a.x * s, a.y * s, a.z * s, a.w * s };
+}
+
+BASE_API Vec4 vec4Normalize (Vec4 a) {
+  float lsq = vec4LenSq(a);
+  if (lsq == 0.f) return (Vec4) { 0 };
+  return vec4Scale(a, 1.f / sqrtf(lsq));
+}
+BASE_API float vec4Dot(Vec4 a, Vec4 b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+}
+
+BASE_API float vec4Len(Vec4 a) {
+  return sqrtf(vec4LenSq(a));
+}
+
+BASE_API float vec4LenSq(Vec4 a) {
+  return a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
+}
+
+BASE_API float vec4Distance(Vec4 a, Vec4 b) {
+  return vec4Len(vec4Sub(a, b));
 }
 
 #endif /* BASE_IMPLEMENTATION */
