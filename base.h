@@ -232,6 +232,8 @@ BASE_API float vec2Distance  (Vec2 a, Vec2 b);
 
 typedef struct { float x, y, z; } Vec3;
 
+BASE_API Vec2  vec3ToVec2    (Vec3 a);
+BASE_API Vec3  vec3FromVec2  (Vec2 a, float z);
 BASE_API Vec3  vec3Add       (Vec3 a, Vec3 b);
 BASE_API Vec3  vec3Sub       (Vec3 a, Vec3 b);
 BASE_API Vec3  vec3Mul       (Vec3 a, Vec3 b);
@@ -246,9 +248,9 @@ BASE_API float vec3Distance  (Vec3 a, Vec3 b);
 
 typedef struct { float x, y, z, w; } Vec4;
 
-#define vec4ToVec3(v4)       ((Vec3) { (v4).x, (v4).y, (v4).z })
-#define vec4FromVec3(v3, _w) ((Vec4) { (v3).x, (v3).y, (v3).z, (_w) })
 
+BASE_API Vec3  vec4ToVec3    (Vec4 a);
+BASE_API Vec4  vec4FromVec3  (Vec3 a, float w);
 BASE_API Vec4  vec4Add       (Vec4 a, Vec4 b);
 BASE_API Vec4  vec4Sub       (Vec4 a, Vec4 b);
 BASE_API Vec4  vec4Mul       (Vec4 a, Vec4 b);
@@ -259,7 +261,22 @@ BASE_API float vec4Len       (Vec4 a);
 BASE_API float vec4LenSq     (Vec4 a);
 BASE_API float vec4Distance  (Vec4 a, Vec4 b);
 
-typedef struct { float x, y, z, w; } Quaternion;
+typedef struct { float x, y, z, w; } Quat;
+
+BASE_API Quat  quatIdentity      (void);
+BASE_API Quat  quatFromAxisAngle (Vec3 axis, float rads);
+BASE_API Quat  quatFromEuler     (float pitch, float yaw, float roll);
+BASE_API Quat  quatAdd           (Quat a, Quat b);
+BASE_API Quat  quatSub           (Quat a, Quat b);
+BASE_API Quat  quatMul           (Quat a, Quat b);
+BASE_API Quat  quatScale         (Quat a, float s);
+BASE_API Quat  quatConjugate    (Quat a);
+BASE_API Quat  quatInverse       (Quat a);
+BASE_API Quat  quatNormalize     (Quat a);
+BASE_API Vec3  quatRotateVec3    (Quat a, Vec3 v);
+BASE_API float quatDot           (Quat a, Quat b);
+BASE_API float quatLen           (Quat a);
+BASE_API float quatLenSq         (Quat a);
 
 #ifdef __cplusplus
 }
@@ -537,6 +554,14 @@ BASE_API float vec2Distance(Vec2 a, Vec2 b) {
   return vec2Len(vec2Sub(a, b));
 }
 
+BASE_API Vec2 vec3ToVec2(Vec3 a) {
+  return (Vec2) { a.x, a.y };
+}
+
+BASE_API Vec3 vec3FromVec2(Vec2 a, float z) {
+  return (Vec3) { a.x, a.y, z };
+}
+
 BASE_API Vec3 vec3Add(Vec3 a, Vec3 b) {
   return (Vec3) { a.x + b.x, a.y + b.y, a.z + b.z };
 }
@@ -595,6 +620,14 @@ BASE_API float vec3Distance(Vec3 a, Vec3 b) {
   return vec3Len(vec3Sub(a, b));
 }
 
+BASE_API Vec3 vec4ToVec3(Vec4 a) {
+  return (Vec3) { a.x, a.y, a.z };
+}
+
+BASE_API Vec4 vec4FromVec3(Vec3 a, float w) {
+  return (Vec4) { a.x, a.y, a.z, w };
+}
+
 BASE_API Vec4 vec4Add(Vec4 a, Vec4 b) {
   return (Vec4) { a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w };
 }
@@ -602,9 +635,11 @@ BASE_API Vec4 vec4Add(Vec4 a, Vec4 b) {
 BASE_API Vec4 vec4Sub(Vec4 a, Vec4 b) {
   return (Vec4) { a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w };
 }
+
 BASE_API Vec4 vec4Mul(Vec4 a, Vec4 b) {
   return (Vec4) { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
 }
+
 BASE_API Vec4 vec4Scale(Vec4 a, float s) {
   return (Vec4) { a.x * s, a.y * s, a.z * s, a.w * s };
 }
@@ -614,6 +649,7 @@ BASE_API Vec4 vec4Normalize (Vec4 a) {
   if (lsq == 0.f) return (Vec4) { 0 };
   return vec4Scale(a, 1.f / sqrtf(lsq));
 }
+
 BASE_API float vec4Dot(Vec4 a, Vec4 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
@@ -628,6 +664,92 @@ BASE_API float vec4LenSq(Vec4 a) {
 
 BASE_API float vec4Distance(Vec4 a, Vec4 b) {
   return vec4Len(vec4Sub(a, b));
+}
+
+BASE_API Quat quatIdentity(void) {
+  return (Quat) { 0.f, 0.f, 0.f, 1.f };
+}
+BASE_API Quat quatFromAxisAngle(Vec3 axis, float rads) {
+  axis = vec3Normalize(axis);
+  float s = sinf(rads * 0.5f);
+  float c = cosf(rads * 0.5f);
+  return (Quat) { axis.x * s, axis.y * s, axis.z * s, c };
+}
+
+BASE_API Quat quatFromEuler(float pitch, float yaw, float roll) {
+  float cosP = cosf(pitch * 0.5f);
+  float sinP = sinf(pitch * 0.5f);
+  float cosY = cosf(yaw * 0.5f);
+  float sinY = sinf(yaw * 0.5f);
+  float cosR = cosf(roll * 0.5f);
+  float sinR = sinf(roll * 0.5f);
+
+  return (Quat) {
+    sinR * cosP * cosY - cosR * sinP * sinY,
+    cosR * sinP * cosY - sinR * cosP * sinY,
+    cosR * cosP * sinY - sinR * sinP * cosY,
+    cosR * cosP * cosY - sinR * sinP * sinY
+  };
+}
+
+BASE_API Quat quatAdd(Quat a, Quat b) {
+  return (Quat) { a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w }; 
+}
+
+BASE_API Quat quatSub(Quat a, Quat b) {
+  return (Quat) { a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w };
+}
+
+BASE_API Quat quatMul(Quat a, Quat b) {
+  return (Quat) {
+    a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+  }; 
+}
+
+BASE_API Quat quatScale(Quat a, float s) {
+  return (Quat) { a.x * s, a.y * s, a.z * s, a.w * s };
+}
+
+BASE_API Quat quatConjugate(Quat a) {
+  return (Quat) { -a.x, -a.y, -a.z, a.w };
+}
+
+BASE_API Quat quatInverse(Quat a) {
+  float lsq = quatLenSq(a);
+  if (lsq == 0.f) return quatIdentity();
+  return quatScale(quatConjugate(a), 1.f / lsq);
+}
+
+BASE_API Quat quatNormalize(Quat a) {
+  float lsq = quatLenSq(a);
+  if (lsq == 0.f) return quatIdentity();
+  return quatScale(a, 1.f / sqrtf(lsq));
+}
+
+BASE_API Vec3 quatRotateVec3(Quat a, Vec3 v) {
+  Vec3 vecQuat = (Vec3) { a.x, a.y, a.z };
+  Vec3 t = vec3Scale(vec3Cross(vecQuat, v), 2.f);
+  Vec3 u = vec3Cross(vecQuat, t);
+  return (Vec3) {
+    v.x + a.w * t.x + u.x,
+    v.y + a.w * t.y + u.y,
+    v.z + a.w * t.z + u.z,
+  };
+}
+
+BASE_API float quatDot(Quat a, Quat b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+}
+
+BASE_API float quatLen(Quat a) {
+  return sqrtf(quatLenSq(a));
+}
+
+BASE_API float quatLenSq(Quat a) {
+  return a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
 }
 
 #endif /* BASE_IMPLEMENTATION */
