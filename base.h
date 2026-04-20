@@ -98,6 +98,8 @@ BASE_API void  arenaInit           (Arena *ar, size_t bytes);
 BASE_API void  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
 BASE_API void* arenaAllocAligned   (Arena *ar, size_t bytes, size_t align);
 BASE_API void* arenaAllocUnaligned (Arena *ar, size_t bytes);
+BASE_API void  arenaReset          (Arena *ar);
+BASE_API void  arenaRestoreAt      (Arena *ar, size_t size);
 BASE_API void  arenaDeinit         (Arena *ar);
 
 /**
@@ -248,7 +250,6 @@ BASE_API float vec3Distance  (Vec3 a, Vec3 b);
 
 typedef struct { float x, y, z, w; } Vec4;
 
-
 BASE_API Vec3  vec4ToVec3    (Vec4 a);
 BASE_API Vec4  vec4FromVec3  (Vec3 a, float w);
 BASE_API Vec4  vec4Add       (Vec4 a, Vec4 b);
@@ -270,7 +271,7 @@ BASE_API Quat  quatAdd           (Quat a, Quat b);
 BASE_API Quat  quatSub           (Quat a, Quat b);
 BASE_API Quat  quatMul           (Quat a, Quat b);
 BASE_API Quat  quatScale         (Quat a, float s);
-BASE_API Quat  quatConjugate    (Quat a);
+BASE_API Quat  quatConjugate     (Quat a);
 BASE_API Quat  quatInverse       (Quat a);
 BASE_API Quat  quatNormalize     (Quat a);
 BASE_API Vec3  quatRotateVec3    (Quat a, Vec3 v);
@@ -318,6 +319,16 @@ BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
   void *p = ar->data + ar->size;
   ar->size += bytes;
   return p;
+}
+
+BASE_API void arenaReset(Arena *ar) {
+  BASE_ASSERT(ar);
+  ar->size = 0;
+}
+
+BASE_API void arenaRestoreAt(Arena *ar, size_t size) {
+  BASE_ASSERT(ar && size < ar->capacity);
+  ar->size = size;
 }
 
 BASE_API void arenaDeinit(Arena *ar) {
@@ -397,7 +408,7 @@ BASE_API bool strContains(Str haystack, Str needle) {
   }
   for (size_t i = 0; i < haystack.size; i++) {
     if (haystack.data[i] == needle.data[0] &&
-        haystack.size - i > needle.size &&
+        haystack.size - i >= needle.size &&
         !memcmp(&haystack.data[i], needle.data, needle.size)) {
       return true;
     }
