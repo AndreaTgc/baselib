@@ -279,6 +279,20 @@ BASE_API float quatDot           (Quat a, Quat b);
 BASE_API float quatLen           (Quat a);
 BASE_API float quatLenSq         (Quat a);
 
+typedef struct { float m[4][4]; } Mat4;
+
+BASE_API Mat4  mat4Identity  (void);
+BASE_API Mat4  mat4Zero      (void);
+BASE_API Mat4  mat4FromQuat  (Quat a);
+BASE_API Mat4  mat4Transpose (Mat4 a);
+BASE_API Mat4  mat4Mul       (Mat4 a, Mat4 b);
+BASE_API Mat4  mat4RotateX   (Mat4 a, float rads);
+BASE_API Mat4  mat4RotateY   (Mat4 a, float rads);
+BASE_API Mat4  mat4RotateZ   (Mat4 a, float rads);
+BASE_API Mat4  mat4Scale     (Mat4 a, float s);
+BASE_API bool  mat4Inverse   (Mat4 a, Mat4 *out);
+BASE_API Vec4  mat4MulVec4   (Mat4 a, Vec4 v);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -761,6 +775,97 @@ BASE_API float quatLen(Quat a) {
 
 BASE_API float quatLenSq(Quat a) {
   return a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
+}
+
+BASE_API Mat4 mat4Identity(void) {
+  return (Mat4) {
+    {{ 1.f, 0.f, 0.f, 0.f },
+     { 0.f, 1.f, 0.f, 0.f },
+     { 0.f, 0.f, 1.f, 0.f },
+     { 0.f, 0.f, 0.f, 1.f }}
+  };
+}
+
+BASE_API Mat4 mat4Zero(void) {
+  return (Mat4) { 0 };
+}
+
+BASE_API Mat4 mat4FromQuat(Quat a) {
+}
+
+BASE_API Mat4 mat4Transpose(Mat4 a) {
+  return (Mat4) {
+    {{ a.m[0][0], a.m[1][0], a.m[2][0], a.m[3][0] },
+     { a.m[0][1], a.m[1][1], a.m[2][1], a.m[3][1] },
+     { a.m[0][2], a.m[1][2], a.m[2][2], a.m[3][2] },
+     { a.m[0][3], a.m[1][3], a.m[2][3], a.m[3][3] }}
+  };
+}
+
+BASE_API Mat4 mat4Mul(Mat4 a, Mat4 b) {
+  Mat4 res = { 0 };
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      for (size_t k = 0; k < 4; k++) {
+        res.m[i][j] += a.m[i][k] * b.m[k][j]; 
+      }
+    }
+  }
+  return res;
+}
+
+BASE_API Mat4 mat4RotateX(Mat4 a, float rads) {
+  Mat4 rotationMatrix = {
+    {{ 1.f, 0.f,        0.f,         0.f },
+     { 0.f, cosf(rads), -sinf(rads), 0.f },
+     { 0.f, sinf(rads), cosf(rads),  0.f },
+     { 0.f, 0.f,        0.f,         1.f }}
+  };
+  
+  return mat4Mul(a, rotationMatrix);
+}
+
+BASE_API Mat4 mat4RotateY(Mat4 a, float rads) {
+  Mat4 rotationMatrix = {
+    {{ cosf(rads),  0.f, sinf(rads), 0.f },
+     { 0.f,         1.f, 0.f,        0.f },
+     { -sinf(rads), 0.f, cosf(rads), 0.f },
+     { 0.f,         0.f, 0.f,        1.f }}
+  };
+
+  return mat4Mul(a, rotationMatrix);
+}
+
+BASE_API Mat4 mat4RotateZ(Mat4 a, float rads) {
+  Mat4 rotationMatrix = {
+    {{ cosf(rads), -sinf(rads), 0.f, 0.f },
+     { sinf(rads), cosf(rads),  0.f, 0.f },
+     { 0.f,        0.f,         1.f, 0.f },
+     { 0.f,        0.f,         0.f, 1.f }}
+  };
+
+  return mat4Mul(a, rotationMatrix);
+}
+
+BASE_API Mat4 mat4Scale(Mat4 a, float s) {
+  for (size_t i = 0; i < 4; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      a.m[i][j] *= s;
+    }
+  }
+  return a;
+}
+
+BASE_API bool mat4Inverse(Mat4 a, Mat4 *out) {
+}
+
+BASE_API Vec4 mat4MulVec4(Mat4 a, Vec4 v) {
+  return (Vec4) {
+    a.m[0][0] * v.x + a.m[0][1] * v.y + a.m[0][2] * v.z + a.m[0][3] * v.w,
+    a.m[1][0] * v.x + a.m[1][1] * v.y + a.m[1][2] * v.z + a.m[1][3] * v.w,
+    a.m[2][0] * v.x + a.m[2][1] * v.y + a.m[2][2] * v.z + a.m[2][3] * v.w,
+    a.m[3][0] * v.x + a.m[3][1] * v.y + a.m[3][2] * v.z + a.m[3][3] * v.w
+  };
 }
 
 #endif /* BASE_IMPLEMENTATION */
