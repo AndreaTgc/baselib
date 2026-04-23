@@ -791,6 +791,40 @@ BASE_API Mat4 mat4Zero(void) {
 }
 
 BASE_API Mat4 mat4FromQuat(Quat a) {
+  float lsq = quatLenSq(a);
+  if (lsq == 0.f) return mat4Identity();
+
+  float qInvLen = 1.f / sqrtf(lsq);
+  float x = a.x * qInvLen;
+  float y = a.y * qInvLen;
+  float z = a.z * qInvLen;
+  float w = a.w * qInvLen;
+
+  float xx = x * x;
+  float yy = y * y;
+  float zz = z * z;
+  float xy = x * y;
+  float xz = x * z;
+  float yz = y * z;
+  float wx = w * x;
+  float wy = w * y;
+  float wz = w * z; 
+  
+  Mat4 m = mat4Identity();
+
+  m.m[0][0] = 1.f - 2.f * (yy + zz);
+  m.m[0][1] = 2.f * (xy - wz);
+  m.m[0][2] = 2.f * (xz + wy);
+
+  m.m[1][0] = 2.f * (xy + wz);
+  m.m[1][1] = 1.f - 2.f * (xx + zz);
+  m.m[1][2] = 2.f * (yz - wx);
+
+  m.m[2][0] = 2.f * (xz - wy);
+  m.m[2][1] = 2.f * (yz + wx);
+  m.m[2][2] = 1.f - 2.f * (xx + yy);
+  
+  return m;
 }
 
 BASE_API Mat4 mat4Transpose(Mat4 a) {
@@ -857,6 +891,49 @@ BASE_API Mat4 mat4Scale(Mat4 a, float s) {
 }
 
 BASE_API bool mat4Inverse(Mat4 a, Mat4 *out) {
+  BASE_ASSERT(out);
+  float *m = &a.m[0][0];
+
+  float t0  =  m[10] * m[15] - m[11] * m[14];
+  float t1  =  m[9]  * m[15] - m[11] * m[13];
+  float t2  =  m[9]  * m[14] - m[10] * m[13];
+  float t3  =  m[8]  * m[15] - m[11] * m[12];
+  float t4  =  m[8]  * m[14] - m[10] * m[12];
+  float t5  =  m[8]  * m[13] - m[9]  * m[12];
+
+  float c00 =  m[5]  * t0 - m[6] * t1 + m[7] * t2;
+  float c01 = -(m[4] * t0 - m[6] * t2 + m[7] * t3);
+  float c02 =  m[4]  * t1 - m[5] * t3 + m[7] * t4;
+  float c03 = -(m[4] * t2 - m[5] * t4 + m[6] * t5);
+
+  float det = m[0] * c00 + m[1] * c01 + m[2] * c02 + m[3] * c03;
+  if (det == 0.f) return false;
+
+  float invDet = 1.f / det;
+
+  float *o = &out->m[0][0];
+
+  o[0]  = c00 * invDet;
+  o[1]  = -(m[1] * t0 - m[2] * t1  + m[3] * t2)  * invDet;
+  o[2]  =  (m[1] * t0 - m[2] * t1  + m[3] * t2)  * invDet;
+  o[3]  = -(m[1] * t2 - m[2] * t4  + m[3] * t5)  * invDet;
+
+  o[4]  = c01 * invDet;
+  o[5]  =  (m[0] * t0 - m[2] * t3  + m[3] * t4)  * invDet;
+  o[6]  = -(m[0] * t0 - m[1] * t3  + m[3] * t5)  * invDet;
+  o[7]  =  (m[0] * t2 - m[1] * t4  + m[2] * t5)  * invDet;
+
+  o[8]  = c02 * invDet;
+  o[9]  = -(m[0] * t1 - m[1] * t3  + m[3] * t5)  * invDet;
+  o[10] =  (m[0] * t0 - m[1] * t3  + m[2] * t5)  * invDet;
+  o[11] = -(m[0] * t1 - m[1] * t2  + m[2] * t3)  * invDet;
+
+  o[12] = c03 * invDet;
+  o[13] =  (m[0] * t2 - m[1] * t4  + m[2] * t5)  * invDet;
+  o[14] = -(m[0] * t1 - m[1] * t3  + m[2] * t4)  * invDet;
+  o[15] =  (m[0] * t0 - m[1] * t1  + m[2] * t2)  * invDet;
+
+  return true;
 }
 
 BASE_API Vec4 mat4MulVec4(Mat4 a, Vec4 v) {
