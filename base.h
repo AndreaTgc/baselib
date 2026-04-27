@@ -26,6 +26,11 @@
  * - Intrusive linked list
  * - Helpers for vector math (up to 4D)
  *
+ * Disabling modules: Some modules within this library can be disabled
+ * in case they are not needed.
+ * List of optional modules and their disabling macros.
+ * - math module (Vec2/3/4, Quat, Mat4) - BASE_NO_MATH to disable
+ *
  * LICENSING:
  * This library is distributed with the MIT license. See the bottom of this
  * file for the license.
@@ -37,7 +42,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#include <math.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -211,6 +215,7 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
 #define llForEachRev(h, it)  for (LLNode *(it) = (h)->prev; (it) != (h); (it) = (it)->prev)
 
+#ifndef BASE_NO_MATH
 /**
  * The following are some very simple utilities for vector calculations.
  * I decided to have them return the result by value instead of modifying the
@@ -218,6 +223,8 @@ BASE_API void llRemoveNode    (LLNode *node);
  * The vectors are supported up to 4D which should cover 99% of all the use
  * cases i actually care about
  */
+
+#include <math.h>
 
 typedef struct { float x, y; } Vec2;
 
@@ -292,6 +299,8 @@ BASE_API Mat4  mat4RotateZ   (Mat4 a, float rads);
 BASE_API Mat4  mat4Scale     (Mat4 a, float s);
 BASE_API bool  mat4Inverse   (Mat4 a, Mat4 *out);
 BASE_API Vec4  mat4MulVec4   (Mat4 a, Vec4 v);
+
+#endif /* BASE_NO_MATH */
 
 #ifdef __cplusplus
 }
@@ -534,6 +543,8 @@ BASE_API void llRemoveNode(LLNode *node) {
   node->next = NULL;
   node->prev = NULL;
 }
+
+#ifndef BASE_NO_MATH
 
 BASE_API Vec2 vec2Add(Vec2 a, Vec2 b) {
   return (Vec2) { a.x + b.x, a.y + b.y };
@@ -944,6 +955,8 @@ BASE_API Vec4 mat4MulVec4(Mat4 a, Vec4 v) {
     a.m[3][0] * v.x + a.m[3][1] * v.y + a.m[3][2] * v.z + a.m[3][3] * v.w
   };
 }
+
+#endif /* BASE_NO_MATH */
 
 #endif /* BASE_IMPLEMENTATION */
 
