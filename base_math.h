@@ -1,11 +1,11 @@
 #ifndef BASE_MATH_H_
 #define BASE_MATH_H_
 
-#include <math.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
+
+#include <stdbool.h>
 
 #ifdef BASE_MATH_STATIC
 #define BASE_MATH_API static
@@ -94,6 +94,8 @@ BASE_MATH_API Vec4  mat4MulVec4   (Mat4 a, Vec4 v);
 #endif /* BASE_MATH_H_ */
 
 #ifdef BASE_MATH_IMPLEMENTATION
+
+#include <math.h>
 
 BASE_MATH_API Vec2 vec2Add(Vec2 a, Vec2 b) {
   return (Vec2) { a.x + b.x, a.y + b.y };

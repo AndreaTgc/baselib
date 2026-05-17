@@ -36,11 +36,10 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#include <ctype.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
 
@@ -58,7 +57,7 @@ extern "C" {
 /**
  * The following macros are the ones that i end up relying on the most when I
  * work on my personal projects. They are nothing crazy but i just don't want to
- * waste my time rewriting them for every single project.
+ * waste my time rewriting them for ever single project.
  */
 
 #define KILOBYTES(n)          ((n) * 1024)
@@ -80,12 +79,13 @@ extern "C" {
 #define PANIC()               do { fprintf(stderr, "PANIC: %s:%d\n", __FILE__, __LINE__); abort(); } while (0)
 #define TODO(msg)             do { fprintf(stderr, "TODO: %s:%d - "msg"\n", __FILE__, __LINE__); abort(); } while (0)
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
+#define CH_ISSPACE(c)         ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BASE_PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
 #define BASE_NODISCARD              __attribute__((warn_unused_result))
 #define BASE_LIKELY(x)              __builtin_expect(!!(x), 1)
-#define BASE_UNLIKELY               __builtin_expect(!!(x), 0)
+#define BASE_UNLIKELY(x)            __builtin_expect(!!(x), 0)
 #else
 #define BASE_PRINTF_LIKE(fmt, args)
 #define BASE_NODISCARD
@@ -112,29 +112,32 @@ BASE_API void  arenaReset          (Arena *ar);
 BASE_API void  arenaRestoreAt      (Arena *ar, size_t size);
 BASE_API void  arenaDeinit         (Arena *ar);
 
+#define arenaAllocT(ar, T) (T *)arenaAllocAligned(ar, sizeof(T), _Alignof(T))
+#define arenaAllocN(ar, T, n) (T *)arenaAllocAligned(ar, sizeof(T) * (n), _Alignof(T))
+
 /**
- * This Str implementation is made to be really lightweight and provide a better
- * development experience compared to C null-terminated strings.
+ * This Sv (string view) implementation is made to be really lightweight and
+ * provide a better development experience compared to C null-terminated strings.
  * It can work as a non owning string slice, in fact, most of the functions do
- * not allocate any dynamic memory, the only exception is strSlurpFile that has
- * to allocate dynamic memory depending on the file lenght.
+ * not allocate any dynamic memory, the only exception is svSlurpFile that has
+ * to allocate dynamic memory depending on the file length.
  */
 
-typedef struct { char *data; size_t size; } Str;
+typedef struct { char *data; size_t size; } Sv;
 
-BASE_API Str  strFromCStr   (const char *cstr);
-BASE_API Str  strSlurpFile  (const char *path);
-BASE_API Str  strFromParts  (const char *startPtr, size_t len);
-BASE_API Str  strTrimLeft   (Str s);
-BASE_API Str  strTrimRight  (Str s);
-BASE_API Str  strTrim       (Str s);
-BASE_API Str  strGetSubstr  (Str s, size_t startIndex, size_t len);
-BASE_API Str  strChopLeft   (Str *s, Str delim);
-BASE_API Str  strChopLeftC  (Str *s, char delim);
-BASE_API bool strEquals     (Str s1, Str s2);
-BASE_API bool strContains   (Str haystack, Str needle);
-BASE_API bool strStartsWith (Str haystack, Str needle);
-BASE_API bool strEndsWith   (Str haystack, Str needle);
+BASE_API Sv   svFromCStr   (const char *cstr);
+BASE_API Sv   svSlurpFile  (const char *path);
+BASE_API Sv   svFromParts  (const char *startPtr, size_t len);
+BASE_API Sv   svTrimLeft   (Sv s);
+BASE_API Sv   svTrimRight  (Sv s);
+BASE_API Sv   svTrim       (Sv s);
+BASE_API Sv   svGetSubstr  (Sv s, size_t startIndex, size_t len);
+BASE_API Sv   svChopLeft   (Sv *s, Sv delim);
+BASE_API Sv   svChopLeftC  (Sv *s, char delim);
+BASE_API bool svEquals     (Sv s1, Sv s2);
+BASE_API bool svContains   (Sv haystack, Sv needle);
+BASE_API bool svStartsWith (Sv haystack, Sv needle);
+BASE_API bool svEndsWith   (Sv haystack, Sv needle);
 
 /**
  * This dynamic array implementation is inspired by the stb_da library and the
@@ -184,22 +187,24 @@ BASE_API void daGrow (void **data, size_t *capacity, size_t elementSize);
 /**
  * This is a very basic implementation of a string builder. it's a wrapper over
  * the DA implementation (see above). The string builder by itself is not null
- * terminated but it can be converted to a cstr string using strBuilderToCStr
- * and you're going to be able to pass the "data" field to C functions that
- * expect a null terminated buffer.
+ * terminated but it can be converted to a cstr string using sbToCStr and
+ * you're going to be able to pass the "data" field to C functions that expect
+ * a null terminated buffer.
  * If you push some content onto the string builder after converting it to a
  * cstr, the content is not going to be null terminated anymore, you should
- * treat strBuilderToCStr as a utility that you call only when you need to
- * interact with functions that require null terminators.
+ * treat sbToCStr as a utility that you call only when you need to interact
+ * with functions that require null terminators.
  */
 
 typedef DA(char) StrBuilder;
 
-BASE_API void strBuilderAppendCStr  (StrBuilder *sb, const char *cstr);
-BASE_API void strBuilderAppendSlice (StrBuilder *sb, const char *ptr, size_t len);
-BASE_API void strBuilderToCStr      (StrBuilder *sb);
+BASE_API void sbAppendCStr  (StrBuilder *sb, const char *cstr);
+BASE_API void sbAppendSlice (StrBuilder *sb, const char *ptr, size_t len);
+BASE_API void sbAppendSv    (StrBuilder *sb, Sv sv);
+BASE_API void sbToCStr      (StrBuilder *sb);
+BASE_API void sbAppendFmt   (StrBuilder *sb, const char *fmt, ...) BASE_PRINTF_LIKE(2, 3);
 
-#define strBuilderFree(sb) daFree(sb)
+#define sbFree(sb) daFree(sb)
 
 /**
  * Minimal intrusive doubly linked list implementation. the type is meant to be
@@ -270,7 +275,7 @@ BASE_API void arenaReset(Arena *ar) {
 }
 
 BASE_API void arenaRestoreAt(Arena *ar, size_t size) {
-  BASE_ASSERT(ar && size < ar->capacity);
+  BASE_ASSERT(ar && size <= ar->capacity);
   ar->size = size;
 }
 
@@ -280,17 +285,17 @@ BASE_API void arenaDeinit(Arena *ar) {
   MEMZERO(ar, sizeof(*ar));
 }
 
-BASE_API Str strFromCStr(const char *cstr) {
+BASE_API Sv svFromCStr(const char *cstr) {
   return cstr == NULL
-    ? (Str) { .data = NULL, .size = 0 }
-    : (Str) { .data = (char *)cstr, .size = strlen(cstr) };
+    ? (Sv) { .data = NULL, .size = 0 }
+    : (Sv) { .data = (char *)cstr, .size = strlen(cstr) };
 }
 
-BASE_API Str strSlurpFile(const char *path) {
+BASE_API Sv svSlurpFile(const char *path) {
   BASE_ASSERT(path);
   FILE *f = fopen(path, "rb");
   if (!f) {
-    return (Str) { .data = NULL, .size = 0 };
+    return (Sv) { .data = NULL, .size = 0 };
   }
 
   fseek(f, 0, SEEK_END);
@@ -300,34 +305,23 @@ BASE_API Str strSlurpFile(const char *path) {
   char *data = (char *)malloc(bytes);
   if (!data) {
     fclose(f);
-    return (Str) { .data = NULL, .size = 0 };
+    return (Sv) { .data = NULL, .size = 0 };
   }
 
   fread(data, 1, bytes, f);
   fclose(f);
 
-  return (Str) { .data = data, .size = bytes };
+  return (Sv) { .data = data, .size = bytes };
 }
 
-BASE_API Str strFromParts(const char *startPtr, size_t len) {
-  return (Str) { .data = (char *)startPtr, .size = len };
+BASE_API Sv svFromParts(const char *startPtr, size_t len) {
+  return (Sv) { .data = (char *)startPtr, .size = len };
 }
 
-BASE_API Str strTrimLeft(Str s) {
+BASE_API Sv svTrimLeft(Sv s) {
   while (s.size) {
-    if (isspace((unsigned char) s.data[0])) {
-      s.size--;
+    if (CH_ISSPACE(s.data[0])) {
       s.data++;
-    } else {
-      break;
-    }
-  }
-  return s;
-}
-
-BASE_API Str strTrimRight(Str s) {
-  while (s.size) {
-    if (isspace((unsigned char) s.data[s.size-1])) {
       s.size--;
     } else {
       break;
@@ -336,16 +330,27 @@ BASE_API Str strTrimRight(Str s) {
   return s;
 }
 
-BASE_API Str strTrim(Str s) {
-  return strTrimLeft(strTrimRight(s));
+BASE_API Sv svTrimRight(Sv s) {
+  while (s.size) {
+    if (CH_ISSPACE(s.data[s.size-1])) {
+      s.size--;
+    } else {
+      break;
+    }
+  }
+  return s;
 }
 
-BASE_API bool strEquals(Str s1, Str s2) {
+BASE_API Sv svTrim(Sv s) {
+  return svTrimLeft(svTrimRight(s));
+}
+
+BASE_API bool svEquals(Sv s1, Sv s2) {
   return s1.size == s2.size &&
          !memcmp(s1.data, s2.data, s1.size);
 }
 
-BASE_API bool strContains(Str haystack, Str needle) {
+BASE_API bool svContains(Sv haystack, Sv needle) {
   if (needle.size == 0) {
     return true;
   }
@@ -362,44 +367,54 @@ BASE_API bool strContains(Str haystack, Str needle) {
   return false;
 }
 
-BASE_API Str strGetSubstr(Str s, size_t startIndex, size_t len) {
+BASE_API Sv svGetSubstr(Sv s, size_t startIndex, size_t len) {
   if (startIndex > s.size) {
-    return (Str) { .data = NULL, .size = 0 };
+    return (Sv) { .data = NULL, .size = 0 };
   }
   if (len >= s.size - startIndex) {
     len = s.size - startIndex;
   }
-  return (Str) { .data = &s.data[startIndex], .size = len };
+  return (Sv) { .data = &s.data[startIndex], .size = len };
 }
 
-BASE_API Str strChopLeft(Str *s, Str delim) {
+BASE_API Sv svChopLeft(Sv *s, Sv delim) {
   if (delim.size != 0 && delim.size <= s->size) {
     for (size_t i = 0; i <= s->size - delim.size; i++) {
       if (memcmp(&s->data[i], delim.data, delim.size) == 0) {
-        Str res = strFromParts(s->data, i);
+        Sv res = svFromParts(s->data, i);
         s->data += i + delim.size;
         s->size -= i + delim.size;
         return res;
       }
     }
   }
-  Str ret = *s;
+  Sv ret = *s;
   s->data += s->size;
   s->size = 0;
   return ret;
 }
 
-BASE_API Str strChopLeftC(Str *s, char delim) {
-  Str c = strFromParts(&delim, 1);
-  return strChopLeft(s, c);
+BASE_API Sv svChopLeftC(Sv *s, char delim) {
+  for (size_t i = 0; i < s->size; i++) {
+    if (s->data[i] == delim) {
+      Sv res = svFromParts(s->data, i);
+      s->data += i + 1;
+      s->size -= i + 1;
+    }
+  }
+
+  Sv ret = *s;
+  s->data += s->size;
+  s->size = 0;
+  return ret;
 }
 
-BASE_API bool strStartsWith(Str haystack, Str needle) {
+BASE_API bool svStartsWith(Sv haystack, Sv needle) {
   return needle.size <= haystack.size &&
          !memcmp(haystack.data, needle.data, needle.size);
 }
 
-BASE_API bool strEndsWith(Str haystack, Str needle) {
+BASE_API bool svEndsWith(Sv haystack, Sv needle) {
   return needle.size <= haystack.size &&
          !memcmp(&haystack.data[haystack.size - needle.size], needle.data,
                  needle.size);
@@ -408,12 +423,12 @@ BASE_API bool strEndsWith(Str haystack, Str needle) {
 BASE_API void daGrow(void **data, size_t *capacity, size_t elementSize) {
   size_t newCapacity = *capacity == 0 ? 8 : *capacity * 2;
   void *newData = realloc(*data, newCapacity * elementSize);
-    BASE_ASSERT(newData && "daGrow failed to realloc data");
+  BASE_ASSERT(newData && "daGrow failed to realloc data");
   *data = newData;
   *capacity = newCapacity;
 }
 
-BASE_API void strBuilderAppendCStr(StrBuilder *sb, const char *cstr) {
+BASE_API void sbAppendCStr(StrBuilder *sb, const char *cstr) {
   BASE_ASSERT(sb && cstr);
   size_t slen = strlen(cstr);
   for (size_t i = 0; i < slen; i++) {
@@ -421,14 +436,18 @@ BASE_API void strBuilderAppendCStr(StrBuilder *sb, const char *cstr) {
   }
 }
 
-BASE_API void strBuilderAppendSlice(StrBuilder *sb, const char *ptr, size_t len) {
+BASE_API void sbAppendSlice(StrBuilder *sb, const char *ptr, size_t len) {
   BASE_ASSERT(sb && ptr);
   for (size_t i = 0; i < len; i++) {
     daAppend(sb, ptr[i]);
   }
 }
 
-BASE_API void strBuilderToCStr(StrBuilder *sb) {
+BASE_API void sbAppendSv(StrBuilder *sb, Sv sv) {
+  sbAppendSlice(sb, sv.data, sv.size);
+}
+
+BASE_API void sbToCStr(StrBuilder *sb) {
   BASE_ASSERT(sb);
   daAppend(sb, '\0');
   sb->size--;
