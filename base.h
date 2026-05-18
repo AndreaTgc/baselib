@@ -80,6 +80,9 @@ extern "C" {
 #define TODO(msg)             do { fprintf(stderr, "TODO: %s:%d - "msg"\n", __FILE__, __LINE__); abort(); } while (0)
 #define STATIC_ASSERT(c, msg) typedef int assert_##msg[(c) ? 1 : -1]
 #define CH_ISSPACE(c)         ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
+#define CH_ISDIGIT(c)         ((c) >= '0' && (c) <= '9')
+#define CH_ISALPHA(c)         ((c) >= 'a' && (c) <= 'z' || (c) >= 'A' && (c) <= 'Z')
+#define CH_ISALNUM(c)         (CH_ISDIGIT(c) || CH_ISALPHA(c))
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BASE_PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
@@ -124,6 +127,9 @@ BASE_API void  arenaDeinit         (Arena *ar);
  */
 
 typedef struct { char *data; size_t size; } Sv;
+
+#define SV_FMT "%.*s"
+#define SV_FMT_ARGS(s) (int)(s).size, (s).data
 
 BASE_API Sv   svFromCStr   (const char *cstr);
 BASE_API Sv   svSlurpFile  (const char *path);
@@ -400,6 +406,7 @@ BASE_API Sv svChopLeftC(Sv *s, char delim) {
       Sv res = svFromParts(s->data, i);
       s->data += i + 1;
       s->size -= i + 1;
+      return res;
     }
   }
 
