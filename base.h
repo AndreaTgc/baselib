@@ -128,6 +128,8 @@ BASE_API void  arenaDeinit         (Arena *ar);
 
 typedef struct { char *data; size_t size; } Sv;
 
+#define SV_LIT(l) (Sv) { (l), sizeof(l) - 1 }
+#define SV_NIL (Sv) { NULL, 0 }
 #define SV_FMT "%.*s"
 #define SV_FMT_ARGS(s) (int)(s).size, (s).data
 
@@ -231,7 +233,6 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
 #define llForEachRev(h, it)  for (LLNode *(it) = (h)->prev; (it) != (h); (it) = (it)->prev)
-
 
 #ifdef __cplusplus
 }
