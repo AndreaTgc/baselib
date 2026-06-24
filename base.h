@@ -44,14 +44,14 @@ extern "C" {
 #include <stdbool.h>
 
 #ifndef BASE_ASSERT
-#include <assert.h>
-#define BASE_ASSERT(cond) assert(cond)
+  #include <assert.h>
+  #define BASE_ASSERT(cond) assert(cond)
 #endif /* BASE_ASSERT */
 
 #ifdef BASE_STATIC
-#define BASE_API static
+  #define BASE_API static
 #else
-#define BASE_API extern
+  #define BASE_API extern
 #endif /* BASE_STATIC */
 
 /**
@@ -133,19 +133,20 @@ typedef struct { char *data; size_t size; } Sv;
 #define SV_FMT "%.*s"
 #define SV_FMT_ARGS(s) (int)(s).size, (s).data
 
-BASE_API Sv   svFromCStr   (const char *cstr);
-BASE_API Sv   svSlurpFile  (const char *path);
-BASE_API Sv   svFromParts  (const char *startPtr, size_t len);
-BASE_API Sv   svTrimLeft   (Sv s);
-BASE_API Sv   svTrimRight  (Sv s);
-BASE_API Sv   svTrim       (Sv s);
-BASE_API Sv   svGetSubstr  (Sv s, size_t startIndex, size_t len);
-BASE_API Sv   svChopLeft   (Sv *s, Sv delim);
-BASE_API Sv   svChopLeftC  (Sv *s, char delim);
-BASE_API bool svEquals     (Sv s1, Sv s2);
-BASE_API bool svContains   (Sv haystack, Sv needle);
-BASE_API bool svStartsWith (Sv haystack, Sv needle);
-BASE_API bool svEndsWith   (Sv haystack, Sv needle);
+BASE_API Sv     svFromCStr   (const char *cstr);
+BASE_API Sv     svSlurpFile  (const char *path);
+BASE_API Sv     svFromParts  (const char *startPtr, size_t len);
+BASE_API Sv     svTrimLeft   (Sv s);
+BASE_API Sv     svTrimRight  (Sv s);
+BASE_API Sv     svTrim       (Sv s);
+BASE_API Sv     svGetSubstr  (Sv s, size_t startIndex, size_t len);
+BASE_API Sv     svChopLeft   (Sv *s, Sv delim);
+BASE_API Sv     svChopLeftC  (Sv *s, char delim);
+BASE_API bool   svEquals     (Sv s1, Sv s2);
+BASE_API bool   svContains   (Sv haystack, Sv needle);
+BASE_API bool   svStartsWith (Sv haystack, Sv needle);
+BASE_API bool   svEndsWith   (Sv haystack, Sv needle);
+BASE_API size_t svHash       (Sv s);
 
 /**
  * This dynamic array implementation is inspired by the stb_da library and the
@@ -233,6 +234,30 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llInitSentinel(n)    do { (n)->prev = (n)->next = (n); } while (0)
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
 #define llForEachRev(h, it)  for (LLNode *(it) = (h)->prev; (it) != (h); (it) = (it)->prev)
+
+#ifndef SVMAP_MAX_LOAD_FACTOR
+  #define SVMAP_MAX_LOAD_FACTOR 0.7
+#endif /* SVMAP_MAX_LOAD_FACTOR */
+
+#ifndef SVMAP_INVALID_VALUE
+  #define SVMAP_INVALID_VALUE ((intptr_t)-1)
+#endif /* SVMAP_INVALID_VALUE */
+
+typedef struct {
+  Sv *keys;
+  intptr_t *values;
+  uint8_t *meta;
+  size_t size;
+  size_t capacity;
+} SvMap;
+
+BASE_API bool     svMapInit     (SvMap *map, size_t capacity);
+BASE_API bool     svMapDeinit   (SvMap *map);
+BASE_API bool     svMapRehash   (SvMap *map, size_t newCapacity);
+BASE_API bool     svMapInsert   (SvMap *map, Sv key, intptr_t value);
+BASE_API bool     svMapContains (SvMap *map, Sv key);
+BASE_API bool     svMapRemove   (SvMap *map, Sv key);
+BASE_API intptr_t svMapFind     (SvMap *map, Sv key);
 
 #ifdef __cplusplus
 }
@@ -428,6 +453,21 @@ BASE_API bool svEndsWith(Sv haystack, Sv needle) {
                  needle.size);
 }
 
+BASE_API size_t svHash(Sv s) {
+  uint64_t h = 0x9e3779b97f4a7c15ULL;
+  h ^= (uint64_t)s.size * 0x9e3779b97f4a7c15ULL;
+  for (size_t i = 0; i < s.size; i++) {
+    h ^= (uint8_t)s.data[i];
+    h *= 0x9e3779b97f4a7c15ULL;
+  }
+  h ^= h >> 30;
+  h *= 0xbf58476d1ce4e5b9ULL;
+  h ^= h >> 27;
+  h *= 0x94d049bb133111ebULL;
+  h ^= h >> 31;
+  return (size_t)(h ^ (h >> (sizeof(size_t) * 4)));
+}
+
 BASE_API void daGrow(void **data, size_t *capacity, size_t elementSize) {
   size_t newCapacity = *capacity == 0 ? 8 : *capacity * 2;
   void *newData = realloc(*data, newCapacity * elementSize);
@@ -489,6 +529,66 @@ BASE_API void llRemoveNode(LLNode *node) {
   node->next->prev = node->prev;
   node->next = NULL;
   node->prev = NULL;
+}
+
+BASE_API bool svMapInit(SvMap *map, size_t capacity) {
+  if (!map) { return false; }
+  if (capacity == 0 || !IS_POW2(capacity)) { return false; }
+  MEMZERO(map, sizeof(*map));
+  map->keys = calloc(sizeof(Sv), capacity);
+  if (!map->keys) { return false; }
+  map->values = calloc(sizeof(intptr_t), capacity);
+  if (!map->values) { free(map->keys); return false; }
+  map->meta = calloc(sizeof(uint8_t), capacity);
+  if (!map->meta) { free(map->keys); free(map->values); return false; }
+  map->capacity = capacity;
+  return true;
+}
+
+BASE_API bool svMapDeinit(SvMap *map) {
+  if (!map) { return false; }
+  if (map->keys) { free(map->keys); }
+  if (map->values) { free(map->values); }
+  if (map->meta) { free(map->meta); }
+  MEMZERO(map, sizeof(*map));
+  return true;
+}
+
+BASE_API bool svMapRehash(SvMap *map, size_t newCapacity) {
+  if (!map) { return false; }
+  if (newCapacity < map->capacity || !IS_POW2(newCapacity)) { return false; }
+  Sv *oldKeys = map->keys;
+  intptr_t *oldVals = map->values;
+  uint8_t *oldMeta = map->meta;
+  if (!svMapinit(map, newCapacity)) { return false; }
+
+  free(oldKeys);
+  free(oldVals);
+  free(oldMeta);
+  return true;
+}
+
+BASE_API bool svMapInsert(SvMap *map, Sv key, intptr_t value) {
+  if (!map) { return false; }
+  if (map->size / map->capacity > SVMAP_MAX_LOAD_FACTOR) {
+    if (!svMapRehash(map, max->capacity * 2)) { return false; }
+  }
+  size_t hash = svHash(key);
+}
+
+BASE_API bool svMapContains(SvMap *map, Sv key) {
+  if (!map) { return false; }
+  return false;
+}
+
+BASE_API bool svMapRemove(SvMap *map, Sv key) {
+  if (!map) { return false; }
+  return false;
+}
+
+BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
+  if (!map) { return return SVMAP_INVALID_VALUE; }
+  return SVMAP_INVALID_VALUE;
 }
 
 #endif /* BASE_IMPLEMENTATION */
