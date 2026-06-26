@@ -235,6 +235,16 @@ BASE_API void llRemoveNode    (LLNode *node);
 #define llForEach(h, it)     for (LLNode *(it) = (h)->next; (it) != (h); (it) = (it)->next)
 #define llForEachRev(h, it)  for (LLNode *(it) = (h)->prev; (it) != (h); (it) = (it)->prev)
 
+/**
+ * The following is a very simple non-owning string map implementation.
+ * It is meant to be extremely simple, i decided to use linear probing because
+ * even if primary clustering is definitely a thing, the cache locality this
+ * probing technique provides often make it so that it doesn't really matter.
+ * To make things a little faster, i store 6 bits of the hashes to avoid some
+ * useless comparisons (string equality is still pretty expensive). These bits
+ * are packed with 2 bits to identify the slot state.
+ */
+
 #ifndef SVMAP_MAX_LOAD_FACTOR
   #define SVMAP_MAX_LOAD_FACTOR 0.7
 #endif /* SVMAP_MAX_LOAD_FACTOR */
@@ -259,13 +269,14 @@ typedef struct {
   bool canRehash;
 } SvMap;
 
-BASE_API bool     svMapInit     (SvMap *map, size_t capacity, bool canRehash);
-BASE_API bool     svMapDeinit   (SvMap *map);
-BASE_API bool     svMapRehash   (SvMap *map, size_t newCapacity);
-BASE_API bool     svMapInsert   (SvMap *map, Sv key, intptr_t value);
-BASE_API bool     svMapContains (SvMap *map, Sv key);
-BASE_API bool     svMapRemove   (SvMap *map, Sv key);
-BASE_API intptr_t svMapFind     (SvMap *map, Sv key);
+BASE_API bool      svMapInit     (SvMap *map, size_t capacity, bool canRehash);
+BASE_API bool      svMapDeinit   (SvMap *map);
+BASE_API bool      svMapRehash   (SvMap *map, size_t newCapacity);
+BASE_API bool      svMapInsert   (SvMap *map, Sv key, intptr_t value);
+BASE_API bool      svMapContains (SvMap *map, Sv key);
+BASE_API bool      svMapRemove   (SvMap *map, Sv key);
+BASE_API intptr_t *svMapFindPtr  (SvMap *map, Sv key);
+BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
 
 #ifdef __cplusplus
 }
@@ -517,7 +528,7 @@ BASE_API void sbAppendFmt(StrBuilder *sb, const char *fmt, ...) {
   va_start(args, fmt);
   int needed = vsnprintf(NULL, 0, fmt, args);
   va_end(args);
- 
+
   if (needed <= 0) { return; }
   size_t oldSize = sb->size;
   size_t newSize = oldSize + (size_t)needed;
@@ -613,9 +624,16 @@ BASE_API bool svMapRehash(SvMap *map, size_t newCapacity) {
 
 BASE_API bool svMapInsert(SvMap *map, Sv key, intptr_t value) {
   if (!map) { return false; }
+
+  if (map->canRehash) {
+    if ((double)map->used / (double)map->capacity > SVMAP_MAX_LOAD_FACTOR) {
+      if (!svMapRehash(map, map->capacity * 2)) { return false; }
+    }
+  }
+
   size_t hash = svHash(key);
   size_t index = hash & (map->capacity - 1);
-  size_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
+  uint8_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
   size_t tomb = (size_t)-1;
 
   for (size_t i = 0; i < map->capacity; i++) {
@@ -643,30 +661,15 @@ BASE_API bool svMapInsert(SvMap *map, Sv key, intptr_t value) {
 }
 
 BASE_API bool svMapContains(SvMap *map, Sv key) {
-  if (!map) { return false; }
-  size_t hash = svHash(key);
-  size_t index = hash & (map->capacity - 1);
-  size_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
-  
-  for (size_t i = 0; i < map->capacity; i++) {
-    uint8_t m = map->meta[index];
-    if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_EMPTY) { return false; }
-    if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_OCCUP &&
-        (m & SVMAP_META_HASH_MASK) == hMeta) {
-      if (svEquals(key, map->keys[index])) { return true; }
-    }
-    index = (index + 1) & (map->capacity - 1);
-  }
-
-  return false;
+  return svMapFindPtr(map, key) != NULL;
 }
 
 BASE_API bool svMapRemove(SvMap *map, Sv key) {
   if (!map) { return false; }
   size_t hash = svHash(key);
   size_t index = hash & (map->capacity - 1);
-  size_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
-  
+  uint8_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
+
   for (size_t i = 0; i < map->capacity; i++) {
     uint8_t m = map->meta[index];
     if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_EMPTY) { return false; }
@@ -674,6 +677,7 @@ BASE_API bool svMapRemove(SvMap *map, Sv key) {
         (m & SVMAP_META_HASH_MASK) == hMeta) {
       if (svEquals(key, map->keys[index])) {
         map->meta[index] = SVMAP_META_TOMBS;
+        map->size--;
         return true;
       }
     }
@@ -683,23 +687,28 @@ BASE_API bool svMapRemove(SvMap *map, Sv key) {
   return false;
 }
 
-BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
-  if (!map) { return SVMAP_INVALID_VALUE; }
+BASE_API intptr_t *svMapFindPtr(SvMap *map, Sv key) {
+  if (!map) { return NULL; }
   size_t hash = svHash(key);
   size_t index = hash & (map->capacity - 1);
-  size_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
-  
+  uint8_t hMeta = ((uint8_t)(hash & SVMAP_META_HASH_MASK));
+
   for (size_t i = 0; i < map->capacity; i++) {
     uint8_t m = map->meta[index];
-    if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_EMPTY) { return SVMAP_INVALID_VALUE; }
+    if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_EMPTY) { return NULL; }
     if ((m & SVMAP_META_STATE_MASK) == SVMAP_META_OCCUP &&
         (m & SVMAP_META_HASH_MASK) == hMeta) {
-      if (svEquals(key, map->keys[index])) { return map->values[index]; }
+      if (svEquals(key, map->keys[index])) { return &map->values[index]; }
     }
     index = (index + 1) & (map->capacity - 1);
   }
 
-  return SVMAP_INVALID_VALUE;
+  return NULL;
+}
+
+BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
+  intptr_t *p = svMapFindPtr(map, key);
+  return p != NULL ? *p : SVMAP_INVALID_VALUE;
 }
 
 #endif /* BASE_IMPLEMENTATION */
