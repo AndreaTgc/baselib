@@ -111,6 +111,7 @@ BASE_API void  arenaInit           (Arena *ar, size_t bytes);
 BASE_API void  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
 BASE_API void* arenaAllocAligned   (Arena *ar, size_t bytes, size_t align);
 BASE_API void* arenaAllocUnaligned (Arena *ar, size_t bytes);
+BASE_API char* arenaAllocFmt       (Arena *ar, const char *fmt, ...) BASE_PRINTF_LIKE(2, 3);
 BASE_API void  arenaReset          (Arena *ar);
 BASE_API void  arenaRestoreAt      (Arena *ar, size_t size);
 BASE_API void  arenaDeinit         (Arena *ar);
@@ -289,21 +290,21 @@ BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
 #include <stdarg.h>
 
 BASE_API void arenaInit(Arena *ar, size_t bytes) {
-  BASE_ASSERT(ar);
+  if (!ar) { return; }
   MEMZERO(ar, sizeof(*ar));
   ar->capacity = bytes;
   ar->data = (uint8_t*)calloc(sizeof(uint8_t), bytes);
 }
 
 BASE_API void arenaInitFromBuffer(Arena *ar, void *buf, size_t bytes) {
-  BASE_ASSERT(ar);
+  if (!ar) { return; }
   ar->size = 0;
   ar->capacity = bytes;
   ar->data = buf;
 }
 
 BASE_API void *arenaAllocAligned(Arena *ar, size_t bytes, size_t align) {
-  BASE_ASSERT(ar);
+  if (!ar) { return NULL; }
   BASE_ASSERT(align > 0 && IS_POW2(align));
   size_t offset = ALIGN_UP(ar->size, align);
   if (offset + bytes > ar->capacity) return NULL;
@@ -313,7 +314,7 @@ BASE_API void *arenaAllocAligned(Arena *ar, size_t bytes, size_t align) {
 }
 
 BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
-  BASE_ASSERT(ar);
+  if (!ar) { return NULL; }
   if (ar->size + bytes > ar->capacity) {
     return NULL;
   }
@@ -322,18 +323,33 @@ BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
   return p;
 }
 
+BASE_API char* arenaAllocFmt(Arena *ar, const char *fmt, ...) {
+  if (!ar) { return NULL; }
+  va_list args;
+  va_start(args, fmt);
+  int needed = vsnprintf(NULL, 0, fmt, args);
+  va_end(args);
+  if (needed <= 0) { return NULL; }
+  char *buf = (char *)arenaAllocAligned(ar, (size_t)needed + 1, _Alignof(char));
+  if (!buf) { return NULL; }
+  va_start(args, fmt);
+  vsnprintf(buf, (size_t)needed + 1, fmt, args);
+  va_end(args);
+  return buf;
+}
+
 BASE_API void arenaReset(Arena *ar) {
-  BASE_ASSERT(ar);
+  if (!ar) { return; }
   ar->size = 0;
 }
 
 BASE_API void arenaRestoreAt(Arena *ar, size_t size) {
-  BASE_ASSERT(ar && size <= ar->capacity);
+  if (!ar || size > ar->capacity) { return; };
   ar->size = size;
 }
 
 BASE_API void arenaDeinit(Arena *ar) {
-  BASE_ASSERT(ar);
+  if (!ar) { return; }
   if (ar->data) free(ar->data);
   MEMZERO(ar, sizeof(*ar));
 }
