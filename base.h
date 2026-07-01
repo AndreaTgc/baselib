@@ -107,8 +107,8 @@ extern "C" {
 
 typedef struct { uint8_t *data; size_t size, capacity; } Arena;
 
-BASE_API void  arenaInit           (Arena *ar, size_t bytes);
-BASE_API void  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
+BASE_API bool  arenaInit           (Arena *ar, size_t bytes);
+BASE_API bool  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
 BASE_API void* arenaAllocAligned   (Arena *ar, size_t bytes, size_t align);
 BASE_API void* arenaAllocUnaligned (Arena *ar, size_t bytes);
 BASE_API char* arenaAllocFmt       (Arena *ar, const char *fmt, ...) BASE_PRINTF_LIKE(2, 3);
@@ -279,6 +279,16 @@ BASE_API bool      svMapRemove   (SvMap *map, Sv key);
 BASE_API intptr_t *svMapFindPtr  (SvMap *map, Sv key);
 BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
 
+/**
+ * The next section contains a series of file system utilities that can be used
+ * on POSIX systems and windows.
+ * They try to stick to standard C as much as possible, using platform dependent
+ * api only when needed.
+ * They are built on top the types seen before
+ */
+
+BASE_API bool fsCreateDir(const char *dirPath);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -289,25 +299,45 @@ BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
 
 #include <stdarg.h>
 
-BASE_API void arenaInit(Arena *ar, size_t bytes) {
-  if (!ar) { return; }
+#if defined(_WIN32) || defined(_WIN64)
+  #if !defined(WIN32_LEAN_AND_MEAN)
+    #define WIN32_LEAN_AND_MEAN
+  #endif /* WIN32_LEAN_AND_MEAN */
+  #if !defined(NOMINMAX)
+    #define NOMINMAX
+  #endif /* NOMINMAX */
+  #include <windows.h>
+  #include <direct.h>
+#else /* we assume posix if not windows */
+  #include <sys/stat.h>
+  #include <sys/types.h>
+  #include <unistd.h>
+  #include <dirent.h>
+  #include <errno.h>
+#endif /* _WIN32 || _WIN64 */
+
+BASE_API bool arenaInit(Arena *ar, size_t bytes) {
+  if (!ar) { return false; }
   MEMZERO(ar, sizeof(*ar));
-  ar->capacity = bytes;
   ar->data = (uint8_t*)calloc(sizeof(uint8_t), bytes);
+  if (!ar->data) { return false; }
+  ar->capacity = bytes;
+  return true;
 }
 
-BASE_API void arenaInitFromBuffer(Arena *ar, void *buf, size_t bytes) {
-  if (!ar) { return; }
+BASE_API bool arenaInitFromBuffer(Arena *ar, void *buf, size_t bytes) {
+  if (!ar || !buf) { return false; }
   ar->size = 0;
   ar->capacity = bytes;
   ar->data = buf;
+  return true;
 }
 
 BASE_API void *arenaAllocAligned(Arena *ar, size_t bytes, size_t align) {
   if (!ar) { return NULL; }
-  BASE_ASSERT(align > 0 && IS_POW2(align));
+  if (align == 0 || !IS_POW2(align)) { return NULL; }
   size_t offset = ALIGN_UP(ar->size, align);
-  if (offset + bytes > ar->capacity) return NULL;
+  if (offset + bytes > ar->capacity) { return NULL; }
   void *p  = ar->data + offset;
   ar->size = offset + bytes;
   return p;
@@ -315,9 +345,7 @@ BASE_API void *arenaAllocAligned(Arena *ar, size_t bytes, size_t align) {
 
 BASE_API void *arenaAllocUnaligned(Arena *ar, size_t bytes) {
   if (!ar) { return NULL; }
-  if (ar->size + bytes > ar->capacity) {
-    return NULL;
-  }
+  if (ar->size + bytes > ar->capacity) { return NULL; }
   void *p = ar->data + ar->size;
   ar->size += bytes;
   return p;
@@ -725,6 +753,15 @@ BASE_API intptr_t *svMapFindPtr(SvMap *map, Sv key) {
 BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
   intptr_t *p = svMapFindPtr(map, key);
   return p != NULL ? *p : SVMAP_INVALID_VALUE;
+}
+
+BASE_API bool fsCreateDir(const char *dirPath) {
+  if (!dirPath) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  return _midir(dirPath) == 0;
+#else
+  return mkdir(dirPath, 0755) == 0;
+#endif
 }
 
 #endif /* BASE_IMPLEMENTATION */
