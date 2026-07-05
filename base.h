@@ -904,7 +904,7 @@ BASE_API bool fsWalkDir(const char *path, FsWalkFn fn, void *userData, Arena *ar
 #endif
 }
 
-BASE_API SvfsGetBaseName(Sv path) {
+BASE_API Sv SvfsGetBaseName(Sv path) {
   for (size_t i = path.size; i > 0; i--) {
     if (path.data[i - 1] == '/') {
       return svFromParts(&path.data[i], path.size - i);
@@ -952,3 +952,4 @@ BASE_API Sv fsGetExtension(Sv path) {
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
