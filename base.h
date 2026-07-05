@@ -287,7 +287,18 @@ BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
  * They are built on top the types seen before
  */
 
-BASE_API bool fsCreateDir(const char *dirPath);
+typedef bool (*FsWalkFn) (const char *path, bool isDir, void *userData);
+
+BASE_API bool fsCreateDir    (const char *path);
+BASE_API bool fsExists       (const char *path);
+BASE_API bool fsIsFile       (const char *path);
+BASE_API bool fsIsDir        (const char *path);
+BASE_API bool fsDeleteFile   (const char *path);
+BASE_API bool fsCopyFile     (const char *src, const char *dst);
+BASE_API bool fsMoveFile     (const char *src, const char *dst);
+BASE_API bool fsWalkDir      (const char *path, FsWalkFn fn, void *userData, Arena *ar);
+BASE_API Sv   fsGetBaseName  (Sv path);
+BASE_API Sv   fsGetExtension (Sv path);
 
 #ifdef __cplusplus
 }
@@ -755,13 +766,165 @@ BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
   return p != NULL ? *p : SVMAP_INVALID_VALUE;
 }
 
-BASE_API bool fsCreateDir(const char *dirPath) {
-  if (!dirPath) { return false; }
+BASE_API bool fsCreateDir(const char *path) {
+  if (!path) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
-  return _midir(dirPath) == 0;
+  return _mkdir(path) == 0;
 #else
-  return mkdir(dirPath, 0755) == 0;
+  return mkdir(path, 0755) == 0;
 #endif
+}
+
+BASE_API bool fsExists(const char *path) {
+  if (!path) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  DWORD attr = GetFileAttributesA(path);
+  return attr != INVALID_FILE_ATTRIBUTES;
+#else
+  struct stat st;
+  return stat(path, &st) == 0;
+#endif
+}
+
+BASE_API bool fsIsFile(const char *path) {
+  if (!path) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  DWORD attr = GetFileAttributesA(path);
+  if (attr == INVALID_FILE_ATTRIBUTES) { return false; }
+  return (attr & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#else
+  struct stat st;
+  if (stat(path, &st) != 0) { return false; }
+  return S_ISREG(st.st_mode);
+#endif
+}
+
+BASE_API bool fsIsDir(const char *path) {
+  if (!path) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  DWORD attr = GetFileAttributesA(path);
+  if (attr == INVALID_FILE_ATTRIBUTES) { return false; }
+  return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+  struct stat st;
+  if (stat(path, &st) != 0) { return false; }
+  return S_ISDIR(st.st_mode);
+#endif
+}
+
+BASE_API bool fsDeleteFile(const char *path) {
+  if (!path) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  return DeleteFileA(path) != 0;
+#else
+  return remove(path) == 0;
+#endif
+}
+
+BASE_API bool fsCopyFile(const char *src, const char *dst) {
+  if (!src || !dst) { return false; }
+  FILE *in = fopen(src, "rb");
+  if (!in) { return false; }
+  FILE *out = fopen(dst, "wb");
+  if (!out) { fclose(in); return false; }
+
+  char buf[8192];
+  size_t n;
+  bool ok = true;
+  while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n) { ok = false; break; }
+  }
+  if (ferror(in)) { ok = false; }
+
+  fclose(in);
+  fclose(out);
+  return ok;
+}
+
+BASE_API bool fsMoveFile(const char *src, const char *dst) {
+  if (!src || !dst) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  return MoveFileExA(src, dst, MOVEFILE_REPLACE_EXISTING) != 0;
+#else
+  if (rename(src, dst) == 0) { return true; }
+  if (errno == EXDEV) {
+    /* crossing filesystems - fall back to copy + delete */
+    if (fsCopyFile(src, dst)) { return fsDeleteFile(src); }
+  }
+  return false;
+#endif
+}
+
+BASE_API bool fsWalkDir(const char *path, FsWalkFn fn, void *userData, Arena *ar) {
+  if (!path || !fn || !ar) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+  size_t mark = ar->size;
+  char *pattern = arenaAllocFmt(ar, "%s\\*", path);
+  if (!pattern) { return false; }
+  WIN32_FIND_DATAA fd;
+  HANDLE h = FindFirstFileA(pattern, &fd);
+  arenaRestoreAt(ar, mark);
+  if (h == INVALID_HANDLE_VALUE) { return false; }
+  bool cont = true;
+  do {
+    if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0) { continue; }
+    size_t entryMark = ar->size;
+    char *full = arenaAllocFmt(ar, "%s\\%s", path, fd.cFileName);
+    if (!full) { cont = false; break; }
+    bool isDir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    cont = fn(full, isDir, userData);
+    if (cont && isDir) { cont = fsWalkDir(full, fn, userData, ar); }
+    arenaRestoreAt(ar, entryMark);
+  } while (cont && FindNextFileA(h, &fd));
+
+  FindClose(h);
+  return true;
+#else
+  DIR *d = opendir(path);
+  if (!d) { return false; }
+  bool cont = true;
+  struct dirent *entry;
+  while (cont && (entry = readdir(d)) != NULL) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) { continue; }
+    size_t mark = ar->size;
+    char *full = arenaAllocFmt(ar, "%s/%s", path, entry->d_name);
+    if (!full) { cont = false; break; }
+    struct stat st;
+    if (stat(full, &st) != 0) {
+      arenaRestoreAt(ar, mark);
+      continue;
+    }
+    bool isDir = S_ISDIR(st.st_mode);
+    cont = fn(full, isDir, userData);
+    if (cont && isDir) { cont = fsWalkDir(full, fn, userData, ar); }
+    arenaRestoreAt(ar, mark);
+  }
+  closedir(d);
+  return true;
+#endif
+}
+
+BASE_API SvfsGetBaseName(Sv path) {
+  for (size_t i = path.size; i > 0; i--) {
+    if (path.data[i - 1] == '/') {
+      return svFromParts(&path.data[i], path.size - i);
+    }
+  }
+  return path;
+}
+
+BASE_API Sv fsGetExtension(Sv path) {
+  for (size_t i = path.size; i > 0; i--) {
+    char c = path.data[i - 1];
+    if (c == '.') {
+      /* a leading dot with nothing before it (or right after a '/') is a
+       * dotfile like ".gitignore", not an extension */
+      if (i - 1 == 0 || path.data[i - 2] == '/') { return SV_NIL; }
+      return svFromParts(&path.data[i - 1], path.size - (i - 1));
+    }
+    if (c == '/') { break; }
+  }
+  return SV_NIL;
 }
 
 #endif /* BASE_IMPLEMENTATION */
