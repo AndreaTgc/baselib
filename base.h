@@ -300,6 +300,37 @@ BASE_API bool fsWalkDir      (const char *path, FsWalkFn fn, void *userData, Are
 BASE_API Sv   fsGetBaseName  (Sv path);
 BASE_API Sv   fsGetExtension (Sv path);
 
+/**
+ * Now for some CLI related utilities, C does not provide a built-in way to
+ * parse command line arguments easily. POSIX C has getopt but that is not
+ * available by default on non POSIX Systems.
+ * I decided to go for a table based spec that is easier to implement and gets
+ * me 90% of the way of what getopt does.
+ * It does not implement all the small thigns like short values attached to the
+ * flags but it's good enough
+ */
+
+#ifndef MAX_ARGS_COUNT
+  #define MAX_ARGS_COUNT 32
+#endif /* MAX_ARGS_COUNT */
+
+typedef enum { ARG_BOOL, ARG_STRING, ARG_INT } ArgType;
+
+typedef struct {
+  ArgType type;
+  bool required;
+  const char *longName;
+  const char *shortName;
+  const char *help;
+  void *outPtr;
+} ArgSpec;
+
+typedef DA(const char *) PositionalArgs;
+
+BASE_API void argsPrintUsage (const char *progName, ArgSpec *specs, size_t specLen);
+BASE_API bool argsParse      (int argc, const char **argv, ArgSpec *specs, size_t specLen,
+                              PositionalArgs *posArgs);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -904,7 +935,7 @@ BASE_API bool fsWalkDir(const char *path, FsWalkFn fn, void *userData, Arena *ar
 #endif
 }
 
-BASE_API Sv SvfsGetBaseName(Sv path) {
+BASE_API Sv fsGetBaseName(Sv path) {
   for (size_t i = path.size; i > 0; i--) {
     if (path.data[i - 1] == '/') {
       return svFromParts(&path.data[i], path.size - i);
@@ -925,6 +956,89 @@ BASE_API Sv fsGetExtension(Sv path) {
     if (c == '/') { break; }
   }
   return SV_NIL;
+}
+
+BASE_API void argsPrintUsage(const char *progName, ArgSpec *specs, size_t specLen) {
+  if (!progName || !specs || specLen == 0) { return; }
+  fprintf(stderr, "usage: %s [options] <args...>\n\noptions:\n", progName);
+  for (size_t i = 0; i < specLen; i++) {
+    ArgSpec *s = &specs[i];
+    char flags[64];
+    if (s->shortName && s->longName) {
+      snprintf(flags, sizeof(flags), "%s, %s", s->shortName, s->longName);
+    } else {
+      snprintf(flags, sizeof(flags), "%s", s->shortName ? s->shortName : s->longName);
+    }
+    fprintf(stderr, "  %-20s %s%s\n", flags, s->help ? s->help : "",
+            s->required ? " (required)" : "");
+  }
+}
+BASE_API bool argsParse(int argc, const char **argv, ArgSpec *specs, size_t specLen,
+                        PositionalArgs *posArgs) {
+  if (!argv || !specs || !posArgs) { return false; }
+
+  bool argsSeen[MAX_ARGS_COUNT] = { false };
+  bool ok = true;
+
+  for (int i = 1; i < argc; i++) {
+    const char *token = argv[i];
+    Sv tokenSv = svFromCStr(token);
+    bool matched = false;
+
+    for (size_t j = 0; j < specLen; j++) {
+      Sv shortSv = svFromCStr(specs[j].shortName);
+      Sv longSv = svFromCStr(specs[j].longName);
+      if (!svEquals(tokenSv, shortSv) && !svEquals(tokenSv, longSv)) { continue; }
+      matched = true;
+      argsSeen[j] = true;
+
+      switch (specs[j].type) {
+        case ARG_BOOL:
+          *(bool *)specs[j].outPtr = true;
+          break;
+        case ARG_STRING:
+          if (i + 1 >= argc) {
+            fprintf(stderr, "error: flag %s requires a value\n", token);
+            ok = false;
+          } else {
+            *(const char **)specs[j].outPtr = argv[++i];
+          }
+          break;
+        case ARG_INT:
+          if (i + 1 >= argc) {
+            fprintf(stderr, "error: flag %s requires a value\n", token);
+            ok = false;
+          } else {
+            *(int*)specs[j].outPtr = atoi(argv[++i]);
+          }
+          break;
+      }
+      break;
+    }
+
+    if (matched) { continue; }
+
+    if (token[0] == '-' && token[1] != '\0') {
+      fprintf(stderr, "error: unknown flag '%s'\n", token);
+      ok = false;
+      continue;
+    }
+
+    daAppend(posArgs, token);
+  }
+
+  if (ok) {
+    /* check all required args */
+    for (size_t i = 0; i < specLen; i++) {
+      if (specs[i].required && !argsSeen[i]) {
+        fprintf(stderr, "error: missing required flag %s\n",
+                specs[i].longName ? specs[i].longName : specs[i].shortName);
+        ok = false;
+      }
+    }
+  }
+
+  return ok;
 }
 
 #endif /* BASE_IMPLEMENTATION */
