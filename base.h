@@ -327,9 +327,9 @@ typedef struct {
 
 typedef DA(const char *) PositionalArgs;
 
-BASE_API void argsPrintUsage (const char *progName, ArgSpec *specs, size_t specLen);
-BASE_API bool argsParse      (int argc, const char **argv, ArgSpec *specs, size_t specLen,
-                              PositionalArgs *posArgs);
+BASE_API void argsPrintUsage (const char *progName, const ArgSpec *specs, size_t specLen);
+BASE_API bool argsParse      (int argc, const char **argv, const ArgSpec *specs,
+                              size_t specLen, PositionalArgs *posArgs);
 
 #ifdef __cplusplus
 }
@@ -958,11 +958,11 @@ BASE_API Sv fsGetExtension(Sv path) {
   return SV_NIL;
 }
 
-BASE_API void argsPrintUsage(const char *progName, ArgSpec *specs, size_t specLen) {
+BASE_API void argsPrintUsage(const char *progName, const ArgSpec *specs, size_t specLen) {
   if (!progName || !specs || specLen == 0) { return; }
   fprintf(stderr, "usage: %s [options] <args...>\n\noptions:\n", progName);
   for (size_t i = 0; i < specLen; i++) {
-    ArgSpec *s = &specs[i];
+    const ArgSpec *s = &specs[i];
     char flags[64];
     if (s->shortName && s->longName) {
       snprintf(flags, sizeof(flags), "%s, %s", s->shortName, s->longName);
@@ -973,8 +973,9 @@ BASE_API void argsPrintUsage(const char *progName, ArgSpec *specs, size_t specLe
             s->required ? " (required)" : "");
   }
 }
-BASE_API bool argsParse(int argc, const char **argv, ArgSpec *specs, size_t specLen,
-                        PositionalArgs *posArgs) {
+
+BASE_API bool argsParse(int argc, const char **argv, const ArgSpec *specs,
+                        size_t specLen, PositionalArgs *posArgs) {
   if (!argv || !specs || !posArgs) { return false; }
 
   bool argsSeen[MAX_ARGS_COUNT] = { false };
