@@ -1,0 +1,175 @@
+/**
+ * Base_Threads.h - simple thread abstraction for POSIX and windows.
+ * Author: AndreaTgc
+ * Version: 0.1.0
+ *
+ * Description: This file contains a thin abstraction layer over POSIX and
+ * windows threads; the goal is to ensure that this library can be used in a way
+ * that leads to the vast majority of the code being platform agnostic.
+ * The struct definitions are visible in the header section just to allow stack
+ * allocation of these types, but accessing them and interacting with them using
+ * platform specific functions leads to less portable code
+ * This file is built on top of base.h and it uses it for some basic macros and
+ * type definitions.
+ */
+#ifndef BASE_THREADS_H_
+#define BASE_THREADS_H_
+
+#ifndef BASE_H_
+  #error base.h has to be included before this file
+#endif /* BASE_H_ */
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
+#ifndef BASE_API
+  #ifdef BASE_STATIC
+    #define BASE_API static
+  #else
+    #define BASE_API extern
+  #endif /* BASE_STATIC */
+#endif /* BASE_API */
+
+#if defined(_WIN32) || defined(_WIN64)
+#else /* assumes POSIX */
+  #include <pthread.h>
+#endif
+
+#if defined(_MSC_VER)
+  #define THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) || defined(__clang__)
+  #define THREAD_LOCAL __thread
+#else
+  #define THREAD_LOCAL _Thread_local
+#endif
+
+typedef struct {
+#if defined(_WIN32) || defined(_WIN64)
+  CRITICAL_SECTION handle;
+#else /* assumes POSIX */
+  pthread_mutex_t handle;
+#endif
+} Mutex;
+
+#define MUTEX_SCOPE(mtx) DEFER(mutexLock(mtx), mutexUnlock(mtx))
+
+BASE_API bool mutexInit   (Mutex *m);
+BASE_API bool mutexLocK   (Mutex *m);
+BASE_API bool mutexUnlock (Mutex *m);
+BASE_API void mutexDeinit (Mutex *m);
+
+typedef struct {
+#if defined(_WIN32) || defined(_WIN64)
+  THREAD handle;
+  void *trampolineData;
+#else /* assumes POSIX */
+  pthread_t handle;
+#endif
+} Thread;
+
+
+typedef struct {
+#if defined(_WIN32) || defined(_WIN64)
+  CONDITIONAL_VARIABLE handle;
+#else /* assumes POSIX */
+  pthread_cond_t handle;
+#endif
+} CondVar;
+
+BASE_API bool condVarInit      (CondVar *cv);
+BASE_API bool condVarWait      (CondVar *cv, Mutex *m);
+BASE_API bool condVarTimedWait (CondVar *cv, uint32_t ms);
+BASE_API bool condVarSignal    (CondVar *cv);
+BASE_API bool condVarBroadcast (CondVar *cv);
+BASE_API void condVarDeinit    (CondVar *cv);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* BASE_THREADS_H_ */
+
+#ifdef BASE_THREADS_IMPLEMENTATION
+
+BASE_API bool mutexInit(Mutex *m) {
+  if (!m) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_mutex_init(&m->handle, NULL) == 0;
+#endif
+}
+
+BASE_API bool mutexLock(Mutex *m) {
+  if (!m) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_mutex_lock(&m->handle) == 0;
+#endif
+}
+
+BASE_API bool mutexUnlock(Mutex *m) {
+  if (!m) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_mutex_unlock(&m->handle) == 0;
+#endif
+}
+
+BASE_API void mutexDeinit(Mutex *m) {
+  if (!m) { return; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  pthread_mutex_destroy(&m->handle);
+#endif
+}
+
+BASE_API bool condVarInit(CondVar *cv) {
+  if (!cv) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_cond_init(&cv->handle, NULL) == 0;
+#endif
+}
+
+BASE_API bool condVarWait(CondVar *cv, Mutex *m) {
+  if (!cv || !m) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_cond_wait(&cv->handle, &m->handle) == 0;
+#endif
+}
+
+BASE_API bool condVarTimedWait(CondVar *cv, uint32_t ms) {
+  if (!cv) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+#endif
+}
+
+BASE_API bool condVarSignal(CondVar *cv) {
+  if (!cv) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_cond_signal(&cv->handle) == 0;
+#endif
+}
+
+BASE_API bool condVarBroadcast(CondVar *cv) {
+  if (!cv) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_cond_broadcast(&cv->handle) == 0;
+#endif
+}
+
+BASE_API void condVarDeinit(CondVar *cv) {
+  if (!cv) { return; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  pthread_cond_destroy(&cv->handle);
+#endif
+}
+
+
+#endif /* BASE_THREADS_IMPLEMENTATION */

@@ -48,11 +48,13 @@ extern "C" {
   #define BASE_ASSERT(cond) assert(cond)
 #endif /* BASE_ASSERT */
 
-#ifdef BASE_STATIC
-  #define BASE_API static
-#else
-  #define BASE_API extern
-#endif /* BASE_STATIC */
+#ifndef BASE_API
+  #ifdef BASE_STATIC
+    #define BASE_API static
+  #else
+    #define BASE_API extern
+  #endif /* BASE_STATIC */
+#endif /* BASE_API */
 
 /**
  * The following macros are the ones that i end up relying on the most when I
