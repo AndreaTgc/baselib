@@ -9,27 +9,22 @@
  * The struct definitions are visible in the header section just to allow stack
  * allocation of these types, but accessing them and interacting with them using
  * platform specific functions leads to less portable code
- * This file is built on top of base.h and it uses it for some basic macros and
- * type definitions.
  */
 #ifndef BASE_THREADS_H_
 #define BASE_THREADS_H_
 
-#ifndef BASE_H_
-  #error base.h has to be included before this file
-#endif /* BASE_H_ */
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-#ifndef BASE_API
-  #ifdef BASE_STATIC
-    #define BASE_API static
-  #else
-    #define BASE_API extern
-  #endif /* BASE_STATIC */
-#endif /* BASE_API */
+#ifdef BASE_THREADS_STATIC
+  #define BASE_THREADS_API static
+#else
+  #define BASE_THREADS_API extern
+#endif /* BASE_THREADS_STATIC */
 
 #if defined(_WIN32) || defined(_WIN64)
 #else /* assumes POSIX */
@@ -54,10 +49,10 @@ typedef struct {
 
 #define MUTEX_SCOPE(mtx) DEFER(mutexLock(mtx), mutexUnlock(mtx))
 
-BASE_API bool mutexInit   (Mutex *m);
-BASE_API bool mutexLocK   (Mutex *m);
-BASE_API bool mutexUnlock (Mutex *m);
-BASE_API void mutexDeinit (Mutex *m);
+BASE_THREADS_API bool mutexInit   (Mutex *m);
+BASE_THREADS_API bool mutexLocK   (Mutex *m);
+BASE_THREADS_API bool mutexUnlock (Mutex *m);
+BASE_THREADS_API void mutexDeinit (Mutex *m);
 
 typedef struct {
 #if defined(_WIN32) || defined(_WIN64)
@@ -77,12 +72,12 @@ typedef struct {
 #endif
 } CondVar;
 
-BASE_API bool condVarInit      (CondVar *cv);
-BASE_API bool condVarWait      (CondVar *cv, Mutex *m);
-BASE_API bool condVarTimedWait (CondVar *cv, uint32_t ms);
-BASE_API bool condVarSignal    (CondVar *cv);
-BASE_API bool condVarBroadcast (CondVar *cv);
-BASE_API void condVarDeinit    (CondVar *cv);
+BASE_THREADS_API bool condVarInit      (CondVar *cv);
+BASE_THREADS_API bool condVarWait      (CondVar *cv, Mutex *m);
+BASE_THREADS_API bool condVarTimedWait (CondVar *cv, Mutex *m, uint32_t ms);
+BASE_THREADS_API bool condVarSignal    (CondVar *cv);
+BASE_THREADS_API bool condVarBroadcast (CondVar *cv);
+BASE_THREADS_API void condVarDeinit    (CondVar *cv);
 
 #ifdef __cplusplus
 }
@@ -92,7 +87,7 @@ BASE_API void condVarDeinit    (CondVar *cv);
 
 #ifdef BASE_THREADS_IMPLEMENTATION
 
-BASE_API bool mutexInit(Mutex *m) {
+BASE_THREADS_API bool mutexInit(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -100,7 +95,7 @@ BASE_API bool mutexInit(Mutex *m) {
 #endif
 }
 
-BASE_API bool mutexLock(Mutex *m) {
+BASE_THREADS_API bool mutexLock(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -108,7 +103,7 @@ BASE_API bool mutexLock(Mutex *m) {
 #endif
 }
 
-BASE_API bool mutexUnlock(Mutex *m) {
+BASE_THREADS_API bool mutexUnlock(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -116,7 +111,7 @@ BASE_API bool mutexUnlock(Mutex *m) {
 #endif
 }
 
-BASE_API void mutexDeinit(Mutex *m) {
+BASE_THREADS_API void mutexDeinit(Mutex *m) {
   if (!m) { return; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -124,7 +119,7 @@ BASE_API void mutexDeinit(Mutex *m) {
 #endif
 }
 
-BASE_API bool condVarInit(CondVar *cv) {
+BASE_THREADS_API bool condVarInit(CondVar *cv) {
   if (!cv) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -132,7 +127,7 @@ BASE_API bool condVarInit(CondVar *cv) {
 #endif
 }
 
-BASE_API bool condVarWait(CondVar *cv, Mutex *m) {
+BASE_THREADS_API bool condVarWait(CondVar *cv, Mutex *m) {
   if (!cv || !m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -140,14 +135,20 @@ BASE_API bool condVarWait(CondVar *cv, Mutex *m) {
 #endif
 }
 
-BASE_API bool condVarTimedWait(CondVar *cv, uint32_t ms) {
+BASE_THREADS_API bool condVarTimedWait(CondVar *cv, Mutex *m, uint32_t ms) {
   if (!cv) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec += ms / 1000;
+  ts.tv_nsec += (long)(ms % 1000) * 1000000L;
+  if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+  return pthread_cond_timedwait(&cv->handle, &m->handle, &ts) == 0;
 #endif
 }
 
-BASE_API bool condVarSignal(CondVar *cv) {
+BASE_THREADS_API bool condVarSignal(CondVar *cv) {
   if (!cv) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -155,7 +156,7 @@ BASE_API bool condVarSignal(CondVar *cv) {
 #endif
 }
 
-BASE_API bool condVarBroadcast(CondVar *cv) {
+BASE_THREADS_API bool condVarBroadcast(CondVar *cv) {
   if (!cv) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
@@ -163,7 +164,7 @@ BASE_API bool condVarBroadcast(CondVar *cv) {
 #endif
 }
 
-BASE_API void condVarDeinit(CondVar *cv) {
+BASE_THREADS_API void condVarDeinit(CondVar *cv) {
   if (!cv) { return; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
