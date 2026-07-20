@@ -27,8 +27,14 @@ extern "C" {
 #endif /* BASE_THREADS_STATIC */
 
 #if defined(_WIN32) || defined(_WIN64)
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif /* WIN32_LEAN_AND_MEAN */
+  #include <windows.h>
 #else /* assumes POSIX */
   #include <pthread.h>
+  #include <sched.h>
+  #include <time.h>
 #endif
 
 #if defined(_MSC_VER)
@@ -47,26 +53,35 @@ typedef struct {
 #endif
 } Mutex;
 
-#define MUTEX_SCOPE(mtx) DEFER(mutexLock(mtx), mutexUnlock(mtx))
+#define MUTEX_SCOPE(mtx) for (int _i = (mutexLock(mtx), 0); !_i; (mutexUnlock(mtx), _i++))
 
 BASE_THREADS_API bool mutexInit   (Mutex *m);
-BASE_THREADS_API bool mutexLocK   (Mutex *m);
+BASE_THREADS_API bool mutexLock   (Mutex *m);
 BASE_THREADS_API bool mutexUnlock (Mutex *m);
 BASE_THREADS_API void mutexDeinit (Mutex *m);
 
+
+typedef void *(*ThreadFunc)(void *);
+
 typedef struct {
 #if defined(_WIN32) || defined(_WIN64)
-  THREAD handle;
+  HANDLE handle;
   void *trampolineData;
 #else /* assumes POSIX */
   pthread_t handle;
 #endif
 } Thread;
 
+BASE_THREADS_API bool     threadCreate    (Thread *t, ThreadFunc fn, void *arg);
+BASE_THREADS_API bool     threadJoin      (Thread *t, void **retVal);
+BASE_THREADS_API bool     threadDetach    (Thread *t);
+BASE_THREADS_API bool     threadSleepMs   (uint32_t ms);
+BASE_THREADS_API bool     threadYield     (void);
+BASE_THREADS_API uint64_t threadCurrentId (void);
 
 typedef struct {
 #if defined(_WIN32) || defined(_WIN64)
-  CONDITIONAL_VARIABLE handle;
+  CONDITION_VARIABLE handle;
 #else /* assumes POSIX */
   pthread_cond_t handle;
 #endif
@@ -90,6 +105,8 @@ BASE_THREADS_API void condVarDeinit    (CondVar *cv);
 BASE_THREADS_API bool mutexInit(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
+  InitializeCriticalSection(&m->handle);
+  return true;
 #else
   return pthread_mutex_init(&m->handle, NULL) == 0;
 #endif
@@ -98,6 +115,8 @@ BASE_THREADS_API bool mutexInit(Mutex *m) {
 BASE_THREADS_API bool mutexLock(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
+  EnterCriticalSection(&m->handle);
+  return true;
 #else
   return pthread_mutex_lock(&m->handle) == 0;
 #endif
@@ -106,6 +125,8 @@ BASE_THREADS_API bool mutexLock(Mutex *m) {
 BASE_THREADS_API bool mutexUnlock(Mutex *m) {
   if (!m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
+  LeaveCriticalSection(&m->handle);
+  return true;
 #else
   return pthread_mutex_unlock(&m->handle) == 0;
 #endif
@@ -114,8 +135,57 @@ BASE_THREADS_API bool mutexUnlock(Mutex *m) {
 BASE_THREADS_API void mutexDeinit(Mutex *m) {
   if (!m) { return; }
 #if defined(_WIN32) || defined(_WIN64)
+  DeleteCriticalSection(&m->handle);
 #else
   pthread_mutex_destroy(&m->handle);
+#endif
+}
+
+BASE_THREADS_API bool threadCreate(Thread *t, ThreadFunc fn, void *arg) {
+  if (!t) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_create(&t->handle, NULL, fn, arg) == 0;
+#endif
+}
+
+BASE_THREADS_API bool threadJoin(Thread *t, void **retVal) {
+  if (!t) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_join(t->handle, retVal) == 0;
+#endif
+}
+
+BASE_THREADS_API bool threadDetach(Thread *t) {
+  if (!t) { return false; }
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return pthread_detach(t->handle) == 0;
+#endif
+}
+
+BASE_THREADS_API bool threadSleepMs(uint32_t ms) {
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  struct timespec ts;
+  ts.tv_sec = ms / 1000;
+  ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+  return nanosleep(&ts, NULL) == 0;
+#endif
+}
+
+BASE_THREADS_API bool threadYield(void) {
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return sched_yield() == 0;
+#endif
+}
+
+BASE_THREADS_API uint64_t threadCurrentId(void) {
+#if defined(_WIN32) || defined(_WIN64)
+#else
+  return (uint64_t)(uintptr_t)pthread_self();
 #endif
 }
 
@@ -136,7 +206,7 @@ BASE_THREADS_API bool condVarWait(CondVar *cv, Mutex *m) {
 }
 
 BASE_THREADS_API bool condVarTimedWait(CondVar *cv, Mutex *m, uint32_t ms) {
-  if (!cv) { return false; }
+  if (!cv || !m) { return false; }
 #if defined(_WIN32) || defined(_WIN64)
 #else
   struct timespec ts;
@@ -171,6 +241,5 @@ BASE_THREADS_API void condVarDeinit(CondVar *cv) {
   pthread_cond_destroy(&cv->handle);
 #endif
 }
-
 
 #endif /* BASE_THREADS_IMPLEMENTATION */
