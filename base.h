@@ -99,29 +99,6 @@ extern "C" {
 #endif /* __GNUC__ || __clang__ */
 
 /**
- * This is a very basic implementation of a arena allocator (also called linear
- * allocator). I decided not to make this a growable arena because, most of the
- * time, we do not need this feature and we can just allocate a really big chunk
- * of memory at the program startup and use it until the very end.
- * The arena can be initialized using heap memory or by passing an buffer and a
- * length to have finer control over where the memory comes from.
- */
-
-typedef struct { uint8_t *data; size_t size, capacity; } Arena;
-
-BASE_API bool  arenaInit           (Arena *ar, size_t bytes);
-BASE_API bool  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
-BASE_API void* arenaAllocAligned   (Arena *ar, size_t bytes, size_t align);
-BASE_API void* arenaAllocUnaligned (Arena *ar, size_t bytes);
-BASE_API char* arenaAllocFmt       (Arena *ar, const char *fmt, ...) BASE_PRINTF_LIKE(2, 3);
-BASE_API void  arenaReset          (Arena *ar);
-BASE_API void  arenaRestoreAt      (Arena *ar, size_t size);
-BASE_API void  arenaDeinit         (Arena *ar);
-
-#define arenaAllocT(ar, T) (T *)arenaAllocAligned(ar, sizeof(T), _Alignof(T))
-#define arenaAllocN(ar, T, n) (T *)arenaAllocAligned(ar, sizeof(T) * (n), _Alignof(T))
-
-/**
  * This Sv (string view) implementation is made to be really lightweight and
  * provide a better development experience compared to C null-terminated strings.
  * It can work as a non owning string slice, in fact, most of the functions do
@@ -150,6 +127,32 @@ BASE_API bool   svContains   (Sv haystack, Sv needle);
 BASE_API bool   svStartsWith (Sv haystack, Sv needle);
 BASE_API bool   svEndsWith   (Sv haystack, Sv needle);
 BASE_API size_t svHash       (Sv s);
+
+/**
+ * This is a very basic implementation of a arena allocator (also called linear
+ * allocator). I decided not to make this a growable arena because, most of the
+ * time, we do not need this feature and we can just allocate a really big chunk
+ * of memory at the program startup and use it until the very end.
+ * The arena can be initialized using heap memory or by passing an buffer and a
+ * length to have finer control over where the memory comes from.
+ */
+
+typedef struct { uint8_t *data; size_t size, capacity; } Arena;
+
+BASE_API bool  arenaInit           (Arena *ar, size_t bytes);
+BASE_API bool  arenaInitFromBuffer (Arena *ar, void *buf, size_t bytes);
+BASE_API void* arenaAllocAligned   (Arena *ar, size_t bytes, size_t align);
+BASE_API void* arenaAllocUnaligned (Arena *ar, size_t bytes);
+BASE_API char* arenaAllocFmt       (Arena *ar, const char *fmt, ...) BASE_PRINTF_LIKE(2, 3);
+BASE_API char* arenaSvToCStr       (Arena *ar, Sv s);
+BASE_API Sv    arenaReadFile       (Arena *ar, const char *path);
+BASE_API Sv    arenaCopySv         (Arena *ar, Sv s);
+BASE_API void  arenaReset          (Arena *ar);
+BASE_API void  arenaRestoreAt      (Arena *ar, size_t size);
+BASE_API void  arenaDeinit         (Arena *ar);
+
+#define arenaAllocT(ar, T) (T *)arenaAllocAligned(ar, sizeof(T), _Alignof(T))
+#define arenaAllocN(ar, T, n) (T *)arenaAllocAligned(ar, sizeof(T) * (n), _Alignof(T))
 
 /**
  * This dynamic array implementation is inspired by the stb_da library and the
@@ -408,6 +411,40 @@ BASE_API char* arenaAllocFmt(Arena *ar, const char *fmt, ...) {
   vsnprintf(buf, (size_t)needed + 1, fmt, args);
   va_end(args);
   return buf;
+}
+
+BASE_API char* arenaSvToCStr(Arena *ar, Sv s) {
+  if (!ar) { return NULL; }
+  char *buffer = arenaAllocAligned(ar, s.size + 1, _Alignof(char));
+  if (!buffer) { return NULL; }
+  memcpy(buffer, s.data, s.size);
+  buffer[s.size] = '\0';
+  return buffer;
+}
+
+BASE_API Sv arenaReadFile(Arena *ar, const char *path) {
+  if (!ar || !path) { return SV_NIL; }
+  FILE *f = fopen(path, "rb");
+  if (!f) { return SV_NIL; }
+  fseek(f, 0, SEEK_END);
+  size_t bytes = (size_t)ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char *data = (char *)arenaAllocAligned(ar, bytes, _Alignof(char));
+  if (!data) {
+    fclose(f);
+    return SV_NIL;
+  }
+  fread(data, 1, bytes, f);
+  fclose(f);
+  return (Sv) { .data = data, .size = bytes };
+}
+
+BASE_API Sv arenaCopySv(Arena *ar, Sv s) {
+  if (!ar) { return SV_NIL; }
+  char *buffer = arenaAllocAligned(ar, s.size, _Alignof(char));
+  if (!buffer) { return SV_NIL; }
+  memcpy(buffer, s.data, s.size);
+  return svFromParts(buffer, s.size);
 }
 
 BASE_API void arenaReset(Arena *ar) {
