@@ -85,6 +85,9 @@ extern "C" {
 #define CH_ISDIGIT(c)         ((c) >= '0' && (c) <= '9')
 #define CH_ISALPHA(c)         ((c) >= 'a' && (c) <= 'z' || (c) >= 'A' && (c) <= 'Z')
 #define CH_ISALNUM(c)         (CH_ISDIGIT(c) || CH_ISALPHA(c))
+#define CH_ISUPPER(c)         ((c) >= 'A' && (c) <= 'Z')
+#define CH_TO_LOWER(c)        (CH_ISUPPER(c) ? ((c) + ('a' - 'A')) : (c))
+#define CH_TO_UPPER(c)        (CH_ISLOWER(c) ? ((a) - ('a' - 'A')) : (c))
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BASE_PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
@@ -123,6 +126,7 @@ BASE_API Sv     svGetSubstr  (Sv s, size_t startIndex, size_t len);
 BASE_API Sv     svChopLeft   (Sv *s, Sv delim);
 BASE_API Sv     svChopLeftC  (Sv *s, char delim);
 BASE_API bool   svEquals     (Sv s1, Sv s2);
+BASE_API bool   svEqualsCI   (Sv s1, Sv s2);
 BASE_API bool   svContains   (Sv haystack, Sv needle);
 BASE_API bool   svStartsWith (Sv haystack, Sv needle);
 BASE_API bool   svEndsWith   (Sv haystack, Sv needle);
@@ -279,10 +283,10 @@ BASE_API bool      svMapInit     (SvMap *map, size_t capacity, bool canRehash);
 BASE_API bool      svMapDeinit   (SvMap *map);
 BASE_API bool      svMapRehash   (SvMap *map, size_t newCapacity);
 BASE_API bool      svMapInsert   (SvMap *map, Sv key, intptr_t value);
-BASE_API bool      svMapContains (SvMap *map, Sv key);
+BASE_API bool      svMapContains (const SvMap *map, Sv key);
 BASE_API bool      svMapRemove   (SvMap *map, Sv key);
-BASE_API intptr_t *svMapFindPtr  (SvMap *map, Sv key);
-BASE_API intptr_t  svMapFind     (SvMap *map, Sv key);
+BASE_API intptr_t *svMapFindPtr  (const SvMap *map, Sv key);
+BASE_API intptr_t  svMapFind     (const SvMap *map, Sv key);
 
 /**
  * The next section contains a series of file system utilities that can be used
@@ -526,6 +530,16 @@ BASE_API Sv svTrim(Sv s) {
 BASE_API bool svEquals(Sv s1, Sv s2) {
   return s1.size == s2.size &&
          !memcmp(s1.data, s2.data, s1.size);
+}
+
+BASE_API bool svEqualsCI(Sv s1, Sv s2) {
+  if (s1.size != s2.size) { return false; }
+  for (size_t i = 0; i < s1.size; i++) {
+    if (CH_TO_LOWER(s1.data[i]) != CH_TO_LOWER(s2.data[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 BASE_API bool svContains(Sv haystack, Sv needle) {
@@ -785,7 +799,7 @@ BASE_API bool svMapInsert(SvMap *map, Sv key, intptr_t value) {
   return true;
 }
 
-BASE_API bool svMapContains(SvMap *map, Sv key) {
+BASE_API bool svMapContains(const SvMap *map, Sv key) {
   return svMapFindPtr(map, key) != NULL;
 }
 
@@ -812,7 +826,7 @@ BASE_API bool svMapRemove(SvMap *map, Sv key) {
   return false;
 }
 
-BASE_API intptr_t *svMapFindPtr(SvMap *map, Sv key) {
+BASE_API intptr_t *svMapFindPtr(const SvMap *map, Sv key) {
   if (!map) { return NULL; }
   size_t hash = svHash(key);
   size_t index = hash & (map->capacity - 1);
@@ -831,7 +845,7 @@ BASE_API intptr_t *svMapFindPtr(SvMap *map, Sv key) {
   return NULL;
 }
 
-BASE_API intptr_t svMapFind(SvMap *map, Sv key) {
+BASE_API intptr_t svMapFind(const SvMap *map, Sv key) {
   intptr_t *p = svMapFindPtr(map, key);
   return p != NULL ? *p : SVMAP_INVALID_VALUE;
 }
