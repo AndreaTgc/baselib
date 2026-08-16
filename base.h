@@ -86,8 +86,9 @@ extern "C" {
 #define CH_ISALPHA(c)         ((c) >= 'a' && (c) <= 'z' || (c) >= 'A' && (c) <= 'Z')
 #define CH_ISALNUM(c)         (CH_ISDIGIT(c) || CH_ISALPHA(c))
 #define CH_ISUPPER(c)         ((c) >= 'A' && (c) <= 'Z')
+#define CH_ISLOWER(c)         ((c) >= 'a' && (c) <= 'z')
 #define CH_TO_LOWER(c)        (CH_ISUPPER(c) ? ((c) + ('a' - 'A')) : (c))
-#define CH_TO_UPPER(c)        (CH_ISLOWER(c) ? ((a) - ('a' - 'A')) : (c))
+#define CH_TO_UPPER(c)        (CH_ISLOWER(c) ? ((c) - ('a' - 'A')) : (c))
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BASE_PRINTF_LIKE(fmt, args) __attribute__((format(printf, fmt, args)))
@@ -409,7 +410,7 @@ BASE_API char* arenaAllocFmt(Arena *ar, const char *fmt, ...) {
   int needed = vsnprintf(NULL, 0, fmt, args);
   va_end(args);
   if (needed <= 0) { return NULL; }
-  char *buf = (char *)arenaAllocAligned(ar, (size_t)needed + 1, _Alignof(char));
+  char *buf = (char *)arenaAllocUnaligned(ar, (size_t)needed + 1);
   if (!buf) { return NULL; }
   va_start(args, fmt);
   vsnprintf(buf, (size_t)needed + 1, fmt, args);
@@ -419,7 +420,7 @@ BASE_API char* arenaAllocFmt(Arena *ar, const char *fmt, ...) {
 
 BASE_API char* arenaSvToCStr(Arena *ar, Sv s) {
   if (!ar) { return NULL; }
-  char *buffer = arenaAllocAligned(ar, s.size + 1, _Alignof(char));
+  char *buffer = arenaAllocUnaligned(ar, s.size + 1);
   if (!buffer) { return NULL; }
   memcpy(buffer, s.data, s.size);
   buffer[s.size] = '\0';
@@ -433,7 +434,7 @@ BASE_API Sv arenaReadFile(Arena *ar, const char *path) {
   fseek(f, 0, SEEK_END);
   size_t bytes = (size_t)ftell(f);
   fseek(f, 0, SEEK_SET);
-  char *data = (char *)arenaAllocAligned(ar, bytes, _Alignof(char));
+  char *data = (char *)arenaAllocUnaligned(ar, bytes);
   if (!data) {
     fclose(f);
     return SV_NIL;
@@ -445,7 +446,7 @@ BASE_API Sv arenaReadFile(Arena *ar, const char *path) {
 
 BASE_API Sv arenaCopySv(Arena *ar, Sv s) {
   if (!ar) { return SV_NIL; }
-  char *buffer = arenaAllocAligned(ar, s.size, _Alignof(char));
+  char *buffer = arenaAllocUnaligned(ar, s.size);
   if (!buffer) { return SV_NIL; }
   memcpy(buffer, s.data, s.size);
   return svFromParts(buffer, s.size);
